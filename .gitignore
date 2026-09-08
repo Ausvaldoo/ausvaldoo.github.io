@@ -1,0 +1,16 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# VitePress 缓存与数据加载器临时文件
+.vitepress/cache/
+*.timestamp-*.mjs
+
+# Obsidian 工作区（配置含本机路径，且 workspace.json 变动频繁）
+.obsidian/
+.trash/
+
+# 系统杂项
+Thumbs.db
+.DS_Store
+*.local

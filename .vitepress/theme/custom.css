@@ -1,0 +1,122 @@
+/* =========================================
+   牧神的笔记 · 自定义样式
+   品牌色 #1E8449
+   注：VitePress 1.6.4 只提供 --vp-home-hero-name-color /
+   name-background 两个变量，text/tagline 无变量，必须直接覆盖。
+   ========================================= */
+
+/* ---------- 首页 Hero：全幅封面背景 ---------- */
+.VPHero {
+  position: relative;
+  overflow: hidden;
+  min-height: 460px;
+  display: flex;
+  align-items: center;
+  --vp-home-hero-name-color: #ffffff;
+}
+
+/* ① 封面底图（2000×480 超宽条幅）
+      视差：背景以 0.26 倍速慢于内容下移。
+      几何：位移 d ∈ [0, 0.26h]，要始终覆盖容器 [0,h]
+      需 top ≤ -0.26h 且 height ≥ 1.26h → 取 -28% / 128% 留余量。 */
+.VPHero::before {
+  content: '';
+  position: absolute;
+  top: -28%;
+  left: 0;
+  right: 0;
+  height: 128%;
+  background-image: url('/zhihu_cover.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: translate3d(0, calc(var(--hero-y, 0px) * 0.26), 0);
+  will-change: transform;
+  z-index: 0;
+}
+
+/* ② 定向遮罩：只在「文字所在」和「导航带」处压暗，
+      右侧约 2/3 完全放开，让图片本身透气。
+      教训：两层渐变会叠乘，透明区也不能给高 alpha。 */
+.VPHero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg,
+      rgba(6, 12, 9, 0.72) 0%,
+      rgba(6, 12, 9, 0.44) 34%,
+      rgba(6, 12, 9, 0.08) 66%,
+      rgba(6, 12, 9, 0) 100%),
+    linear-gradient(180deg,
+      rgba(6, 12, 9, 0.48) 0%,
+      rgba(6, 12, 9, 0) 26%,
+      rgba(6, 12, 9, 0) 62%,
+      rgba(6, 12, 9, 0.30) 100%);
+  z-index: 1;
+}
+
+/* 窄屏文字横跨全宽：改为上下重、中间轻 */
+@media (max-width: 767px) {
+  .VPHero::after {
+    background: linear-gradient(180deg,
+      rgba(6, 12, 9, 0.55) 0%,
+      rgba(6, 12, 9, 0.28) 40%,
+      rgba(6, 12, 9, 0.62) 100%);
+  }
+}
+
+/* ③ 内容浮于遮罩之上，反向微移制造层次 */
+.VPHero .container {
+  position: relative;
+  z-index: 2;
+  transform: translate3d(0, calc(var(--hero-y, 0px) * -0.06), 0);
+  will-change: transform;
+}
+
+/* 尊重系统减弱动效：视差整体关闭 */
+@media (prefers-reduced-motion: reduce) {
+  .VPHero::before,
+  .VPHero .container {
+    transform: none !important;
+  }
+}
+
+/* ④ 标题文字：纯白 + 阴影（不靠死命压暗底图换对比度） */
+.VPHero .name,
+.VPHero .text {
+  color: #ffffff;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.40);
+}
+.VPHero .text {
+  max-width: 820px;
+}
+.VPHero .tagline {
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.50);
+}
+
+/* ⑤ 次要按钮：实底浅色 + 深色字（白底配白字是致命错误） */
+.VPHero .actions .VPButton.alt {
+  background-color: rgba(255, 255, 255, 0.95);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: #16241c;
+}
+.VPHero .actions .VPButton.alt:hover {
+  background-color: #ffffff;
+  border-color: #ffffff;
+  color: #000000;
+}
+
+/* ---------- 导航：首页时浮于深色带，链接转白 ---------- */
+body:has(.VPHome) .VPNavBar .VPNavBarMenuLink {
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+}
+body:has(.VPHome) .VPNavBar .VPNavBarMenuLink:hover {
+  color: #ffffff;
+}
+body:has(.VPHome) .VPNavBarTitle .title {
+  color: #ffffff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+}
