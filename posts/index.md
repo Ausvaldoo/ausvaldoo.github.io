@@ -32,8 +32,10 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
 
 <style scoped>
 .archive-count {
-  margin: -10px 0 30px;
-  font-size: 13px;
+  margin: 8px 0 32px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
   color: var(--vp-c-text-3);
 }
 .archive-group {
@@ -77,7 +79,8 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
   font-variant-numeric: tabular-nums;
 }
 .archive-title {
-  flex: 1;
+  flex: none;
+  max-width: 100%;
   font-family: var(--font-serif);
   font-size: 16px;
   font-weight: 600;

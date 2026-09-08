@@ -47,15 +47,17 @@ function setupHeroParallax(router) {
 }
 
 /**
- * 滚动渐显：列表项 / 归档分组进入视口时淡入上移。
+ * 滚动渐显（MutationObserver 版）：
+ * - 直接盯 body 的 DOM 变化，列表/归档元素一出现就处理——
+ *   无论首次加载、SPA 切页、浏览器前进后退，都不存在时序竞态
+ * - 视口内的立即显示；视口外的交给 IntersectionObserver
  * - 先给 <html> 加 has-reveal 再藏内容：JS 挂了内容照常显示
- * - IntersectionObserver 触发后即 unobserve（只演一遍）
  * - prefers-reduced-motion 时不启用
  */
-function setupReveal(router) {
+function setupReveal() {
   if (typeof window === 'undefined') return
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-  if (!('IntersectionObserver' in window)) return
+  if (!('IntersectionObserver' in window) || !('MutationObserver' in window)) return
 
   const io = new IntersectionObserver(
     (entries) => {
@@ -69,26 +71,65 @@ function setupReveal(router) {
     { threshold: 0.08 }
   )
 
-  const scan = () => {
+  const SEL = '.post-item:not(.revealed), .archive-group:not(.revealed)'
+  let scheduled = false
+
+  const handle = () => {
+    scheduled = false
     document.documentElement.classList.add('has-reveal')
-    document
-      .querySelectorAll('.post-item:not(.revealed), .archive-group:not(.revealed)')
-      .forEach((el) => io.observe(el))
+    document.querySelectorAll(SEL).forEach((el) => {
+      const r = el.getBoundingClientRect()
+      if (r.top < window.innerHeight && r.bottom > 0) {
+        el.classList.add('revealed') // 已在视口：立即显示
+      } else {
+        io.observe(el) // 视口外：滚动到再显示
+      }
+    })
   }
 
-  const tryScan = (t) => setTimeout(scan, t)
-  window.addEventListener('load', () => tryScan(0))
-  if (router && typeof router.onAfterRouteChanged === 'function') {
-    router.onAfterRouteChanged(() => tryScan(80))
-  }
-  tryScan(0)
-  tryScan(300)
+  const mo = new MutationObserver(() => {
+    if (!scheduled) {
+      scheduled = true
+      requestAnimationFrame(handle)
+    }
+  })
+  mo.observe(document.body, { childList: true, subtree: true })
+  window.addEventListener('load', handle)
+}
+
+/**
+ * Hero 分层：往 .VPHero 追加墨彩层（照片之上、内容之下）。
+ * 三层各自挂在不同元素上，才能既带 keyframe 动画又带不同速率的视差：
+ *   ::before 照片(0.26x) → .hero-blobs 墨彩(0.15x，动画在其 ::before 上) → 内容(-0.06x)
+ * 两个坑（都踩过）：
+ *   1. 必须等 hydration 完成——提前注入会让 Vue 对不上子节点，
+ *      把整个 .main 挪进墨彩层，文字直接消失；
+ *   2. 必须追加为末尾节点——插在最前面同样破坏 Vue 的子节点对位。
+ */
+function ensureHeroBlobs() {
+  if (document.readyState !== 'complete') return false
+  const hero = document.querySelector('.VPHero')
+  if (!hero || hero.querySelector('.hero-blobs')) return true
+  const d = document.createElement('div')
+  d.className = 'hero-blobs'
+  d.setAttribute('aria-hidden', 'true')
+  hero.appendChild(d)
+  return true
 }
 
 export default {
   extends: DefaultTheme,
   enhanceApp({ router }) {
     setupHeroParallax(router)
-    setupReveal(router)
+    setupReveal()
+    // SSR（构建渲染页）时没有 window/document，直接返回
+    if (typeof window === 'undefined') return
+    // 挂载后补注入（路由切换重建 DOM 时也要补）
+    const inject = () => setTimeout(ensureHeroBlobs, 0)
+    window.addEventListener('load', inject)
+    if (router && typeof router.onAfterRouteChanged === 'function') {
+      router.onAfterRouteChanged(inject)
+    }
+    inject()
   }
 }
