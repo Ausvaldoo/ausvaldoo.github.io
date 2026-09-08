@@ -47,107 +47,106 @@ function setupHeroParallax(router) {
 }
 
 /* =========================================================
- * Hero 粒子场：加号 / 圆点交替，水波式起伏，鼠标处如水面涟漪
- * - 纯 Canvas 2D，单层绘制，~400 粒子，性能无压力
- * - 鼠标附近粒子被"推开 + 增亮 + 放大"，像手指点水面
- * - hero 滚出视口 / 标签页隐藏时自动暂停
- * - prefers-reduced-motion：只画一帧静态场
+ * Hero 粒子场 v3：「ASCII 点阵呼吸场」（移植自瑞士风 PLC 演讲 PPT 首页）
+ * - 字符点阵 . : - + * ◦ • ▢ 由四组 sin/cos 噪声场驱动显隐，
+ *   默认即"涌动呼吸"；密度 CELL=16px，与 PPT 完全一致
+ * - 双模式：无鼠标 → 自动呼吸；鼠标进入 → 以光标为圆心的涟漪
+ *   （亮度增强 + 赭红着色 + 波纹外扩），静止 2.5s 后回到呼吸模式
+ * - hero 滚出视口 / 标签页隐藏自动暂停；reduced-motion 只画一帧
  * ========================================================= */
 function startParticles(canvas) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const PALETTE = '   ...:::---+++***◦◦••▢▣' // 与 PPT 同款字符梯度
+  const CELL = 16
+  const FONT_SIZE = 13
+
   let w = 0
   let h = 0
-  let pts = []
   let raf = null
   let running = false
   let mx = -99999
   let my = -99999
+  let lastMove = 0
 
-  const build = () => {
+  const setup = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     w = canvas.clientWidth
     h = canvas.clientHeight
-    canvas.width = Math.max(1, w * dpr)
-    canvas.height = Math.max(1, h * dpr)
+    canvas.width = Math.max(1, Math.round(w * dpr))
+    canvas.height = Math.max(1, Math.round(h * dpr))
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-    pts = []
-    const gap = 20 // 高密度网格（原 30 太松散）；1440×480 下约 2100 粒子
-    const cols = Math.ceil(w / gap) + 1
-    const rows = Math.ceil(h / gap) + 1
-    for (let j = 0; j < rows; j++) {
-      for (let i = 0; i < cols; i++) {
-        pts.push({
-          x: i * gap + (Math.random() - 0.5) * 10,
-          y: j * gap + (Math.random() - 0.5) * 10,
-          plus: (i + j) % 2 === 0, // 加号与圆点棋盘式交替
-          s: 2.0 + Math.random() * 1.4,
-          rot: (Math.random() - 0.5) * 0.5,
-          ph: Math.random() * Math.PI * 2,
-          rust: Math.random() < 0.07
-        })
-      }
-    }
+    const mono =
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--font-mono')
+        .trim() || 'JetBrains Mono, Consolas, monospace'
+    ctx.font = `500 ${FONT_SIZE}px ${mono}`
+    ctx.textBaseline = 'top'
   }
 
-  const draw = (t) => {
+  const draw = (tSec) => {
     ctx.clearRect(0, 0, w, h)
-    const dark = document.documentElement.classList.contains('dark')
-    const ink = dark ? '236,226,208' : '43,36,28'
-    const rust = dark ? '207,107,74' : '168,68,42'
+    const cols = Math.ceil(w / CELL)
+    const rows = Math.ceil(h / CELL)
+    const cx = cols * 0.5
+    const cy = rows * 0.5
+    const hasMouse = mx > -99999
+    const now = performance.now()
 
-    for (const p of pts) {
-      // 水波：相位随 (x+y) 推移，形成斜向荡开的波（默认就动，肉眼可见）
-      const wave = Math.sin(t * 0.0018 + (p.x + p.y) * 0.013 + p.ph)
-      const sc = 0.55 + 0.5 * (wave * 0.5 + 0.5)
-      // 缓慢漂移 + 随波上下浮动（浮动幅度 4.5px，是"默认在动"的关键）
-      const ox = Math.sin(t * 0.0006 + p.y * 0.02 + p.ph) * 3
-      const oy = Math.cos(t * 0.0005 + p.x * 0.02 + p.ph) * 2 + wave * 4.5
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        // PPT 同款四重噪声场：横向波 + 纵向波 + 对角波 + 中心径向波
+        const n = (
+          Math.sin(c * 0.18 + tSec) +
+          Math.sin(r * 0.24 - tSec * 0.7) +
+          Math.sin((c + r) * 0.12 + tSec * 0.45) +
+          Math.sin(Math.hypot(c - cx, r - cy) * 0.16 - tSec * 0.55)
+        ) / 4
+        let v = (n + 1) / 2 // [0,1]
 
-      // 鼠标涟漪：半径 140px 内，粒子被推开 + 增亮 + 放大
-      const dx = p.x + ox - mx
-      const dy = p.y + oy - my
-      const d2 = dx * dx + dy * dy
-      const near = d2 < 19600 // 140^2
-      const k = near ? 1 - Math.sqrt(d2) / 140 : 0
-      const push = k * k * 14
-      const ang = Math.atan2(dy, dx)
+        // 鼠标模式：以光标为圆心的涟漪（亮度抬升 + 波纹外扩）
+        let mFall = 0
+        if (hasMouse) {
+          const dx = c * CELL - mx
+          const dy = r * CELL - my
+          const d = Math.sqrt(dx * dx + dy * dy)
+          mFall = Math.exp(-d / 110)
+          if (mFall > 0.02) {
+            const ripple = Math.sin(d * 0.09 - tSec * 2.4) * mFall
+            v = Math.min(1, v + mFall * 0.55 + ripple * 0.35)
+          } else {
+            mFall = 0
+          }
+        }
 
-      const a = Math.min((0.18 + 0.36 * (wave * 0.5 + 0.5)) * (1 + k * 1.8), 0.9)
-      const col = p.rust ? rust : ink
-      const s = p.s * sc * (1 + k * 0.9)
-      const px = p.x + ox + (near ? Math.cos(ang) * push : 0)
-      const py = p.y + oy + (near ? Math.sin(ang) * push : 0)
-
-      ctx.strokeStyle = ctx.fillStyle = `rgba(${col},${a.toFixed(3)})`
-      ctx.lineWidth = 1.1
-      if (p.plus) {
-        const ax = Math.cos(p.rot) * s
-        const ay = Math.sin(p.rot) * s
-        ctx.beginPath()
-        ctx.moveTo(px - ax, py - ay)
-        ctx.lineTo(px + ax, py + ay)
-        ctx.moveTo(px + ay, py - ax)
-        ctx.lineTo(px - ay, py + ax)
-        ctx.stroke()
-      } else {
-        ctx.beginPath()
-        ctx.arc(px, py, Math.max(s * 0.42, 0.6), 0, 6.2832)
-        ctx.fill()
+        if (v < 0.22) continue
+        const ch = PALETTE[Math.min(PALETTE.length - 1, Math.floor(v * PALETTE.length))]
+        if (ch === ' ') continue
+        // PPT 封面同款：IKB 蓝底上的白色点阵（屏幕混合的发亮感）
+        const alpha = Math.min((0.08 + (v - 0.22) * 0.55) * (1 + mFall * 0.6), 0.95)
+        ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`
+        ctx.fillText(ch, c * CELL, r * CELL)
       }
+    }
+    // 鼠标静止 2.5s 后退出鼠标模式，回到自动呼吸
+    if (hasMouse && now - lastMove > 2500) {
+      mx = -99999
+      my = -99999
     }
   }
 
-  const loop = (t) => {
-    draw(t)
+  let t0 = 0
+  const loop = (tMs) => {
+    // PPT 同速：t*0.55 秒级时钟
+    draw(((tMs - t0) / 1000) * 0.55)
     raf = requestAnimationFrame(loop)
   }
   const start = () => {
     if (running || reduced) return
     running = true
+    t0 = performance.now()
     raf = requestAnimationFrame(loop)
   }
   const stop = () => {
@@ -156,17 +155,18 @@ function startParticles(canvas) {
     raf = null
   }
 
-  build()
+  setup()
   if (reduced) {
-    draw(0) // 减弱动效：静态粒子场一帧
+    draw(0) // 减弱动效：静态点阵一帧
   } else {
     start()
-    // 鼠标涟漪：监听 hero 区域（含其上方遮挡的容器冒泡）
+    // 鼠标模式触发：监听 hero 区域的指针移动
     const zone = canvas.parentElement || canvas
     zone.addEventListener('pointermove', (e) => {
       const r = canvas.getBoundingClientRect()
       mx = e.clientX - r.left
       my = e.clientY - r.top
+      lastMove = performance.now()
     })
     zone.addEventListener('pointerleave', () => {
       mx = -99999
@@ -175,7 +175,7 @@ function startParticles(canvas) {
   }
 
   window.addEventListener('resize', () => {
-    build()
+    setup()
     if (reduced) draw(0)
   })
   document.addEventListener('visibilitychange', () =>
