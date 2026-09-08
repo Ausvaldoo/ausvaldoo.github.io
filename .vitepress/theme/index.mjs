@@ -25,6 +25,10 @@ function setupHeroParallax(router) {
     const h = hero.offsetHeight || 1
     const y = Math.min(Math.max(window.scrollY || 0, 0), h)
     hero.style.setProperty('--hero-y', y.toFixed(1) + 'px')
+    // 滚动进度 0→1：0=页面顶部，1=滚过约 65% hero 高度。
+    // 文字左滑消隐、封面放大渐隐都按这个进度走（系数在 custom.css）。
+    const p = Math.min(y / (h * 0.65), 1)
+    hero.style.setProperty('--hero-p', p.toFixed(3))
   }
 
   const onScroll = () => {
