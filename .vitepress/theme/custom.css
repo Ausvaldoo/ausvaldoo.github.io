@@ -83,23 +83,60 @@ html.dark body::after {
   background: rgba(168, 68, 42, 0.28);
 }
 
-/* ---------- ③ Hero：信号红海报底 × 白色点阵呼吸场 ----------
-   红取自 Beckhoff SPT 文档站实测值 #EF0000（rgb 239,0,0）
-   --hero-y 滚动像素 / --hero-p 进度 0→1（JS 写入）：
-   点阵场放大渐隐退场，文字向左滑出渐隐，下方纸面内容上移占领空间 */
+/* ---------- ③ Hero：封面照片回归 × 白色点阵呼吸场 ----------
+   照片：public/zhihu_cover.jpg（2000×480 超宽条幅）
+   视差三层：照片 0.26 倍速慢移 + 滚动放大渐隐 → 点阵场同步放大渐隐 → 文字左滑渐隐
+   --hero-y 滚动像素 / --hero-p 进度 0→1（JS 写入） */
 .VPHero {
   position: relative;
   overflow: hidden;
   min-height: 480px;
   display: flex;
   align-items: center;
-  /* 信号红：上部微亮、中部纯正、下部沉一档 */
-  background:
-    radial-gradient(120% 90% at 50% 38%, #ff3126 0%, #ef0000 52%, #c60000 100%);
+  /* 照片加载前的兜底底色（暖墨） */
+  background: #241e15;
   --vp-home-hero-name-color: #fffdf8;
 }
 
-/* 粒子画布（JS 注入 .hero-particles）：白色点阵，慢速视差 + 滚动放大渐隐 */
+/* 封面照片层：视差慢移 + 滚动放大 + 渐渐消隐
+   几何：位移 d ∈ [0, 0.26h]，top -28% / height 128% 保证始终覆盖容器 */
+.VPHero::before {
+  content: '';
+  position: absolute;
+  top: -28%;
+  left: 0;
+  right: 0;
+  height: 128%;
+  background-image: url('/zhihu_cover.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: translate3d(0, calc(var(--hero-y, 0px) * 0.26), 0)
+    scale(calc(1 + var(--hero-p, 0) * 0.16));
+  opacity: calc(1 - var(--hero-p, 0) * 0.5);
+  will-change: transform, opacity;
+  z-index: 0;
+}
+
+/* 定向遮罩：整体轻压一层暖墨让白点阵与白字立得住，
+   文字带与底部略加深；随照片同步渐隐 */
+.VPHero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(26, 20, 14, 0.5) 0%,
+    rgba(26, 20, 14, 0.34) 45%,
+    rgba(26, 20, 14, 0.55) 100%
+  );
+  opacity: calc(1 - var(--hero-p, 0) * 0.5);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 粒子画布（JS 注入 .hero-particles）：白色点阵浮于照片之上，
+   慢速视差 + 滚动放大渐隐，与照片层同步退场 */
 .hero-particles {
   position: absolute;
   inset: 0;
@@ -110,7 +147,7 @@ html.dark body::after {
     scale(calc(1 + var(--hero-p, 0) * 0.16));
   opacity: calc((1 - var(--hero-p, 0) * 0.5) * 0.9);
   will-change: transform, opacity;
-  z-index: 0;
+  z-index: 1;
   pointer-events: none;
 }
 
@@ -123,14 +160,14 @@ html.dark body::after {
   will-change: transform, opacity;
 }
 
-/* 红底白字体系（文字带同族深红投影，从点阵海里"托"出来） */
+/* 照片上的白字体系（暖墨投影，从画面里"托"出来） */
 .VPHero .name,
 .VPHero .text {
   font-family: var(--font-serif);
   font-weight: 700;
   letter-spacing: 0.01em;
   color: #fffdf8;
-  text-shadow: 0 2px 24px rgba(120, 0, 0, 0.6), 0 1px 4px rgba(120, 0, 0, 0.4);
+  text-shadow: 0 2px 24px rgba(25, 18, 10, 0.6), 0 1px 4px rgba(25, 18, 10, 0.4);
 }
 .VPHero .name {
   font-size: clamp(2.4rem, 4.6vw, 3.6rem);
@@ -143,7 +180,7 @@ html.dark body::after {
   font-size: 14px;
   letter-spacing: 0.04em;
   color: rgba(255, 248, 238, 0.96);
-  text-shadow: 0 1px 10px rgba(120, 0, 0, 0.7), 0 1px 3px rgba(120, 0, 0, 0.55);
+  text-shadow: 0 1px 10px rgba(25, 18, 10, 0.7), 0 1px 3px rgba(25, 18, 10, 0.55);
 }
 
 /* 按钮：直角、等宽字 —— 红底上白实体 / 白描边（Beckhoff 式红白对） */

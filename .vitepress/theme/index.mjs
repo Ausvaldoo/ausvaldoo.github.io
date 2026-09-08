@@ -146,11 +146,9 @@ function startParticles(canvas) {
         if (v < 0.22) continue
         const ch = PALETTE[Math.min(PALETTE.length - 1, Math.floor(v * PALETTE.length))]
         if (ch === ' ') continue
-        // 柿橙底上的暖白点阵；鼠标尾流处点阵转墨色（海报落墨）
-        // 亮底需要更高基础透明度，点才立得住
-        const alpha = Math.min((0.22 + (v - 0.22) * 0.72) * (1 + mFall * 0.6), 0.95)
-        const col = mFall > 0.3 ? '43,36,28' : '255,248,238'
-        ctx.fillStyle = `rgba(${col},${alpha.toFixed(3)})`
+        // 点阵全程暖白：呼吸与尾流同色，尾流只增亮不换色
+        const alpha = Math.min((0.22 + (v - 0.22) * 0.72) * (1 + mFall * 0.8), 1)
+        ctx.fillStyle = `rgba(255,248,238,${alpha.toFixed(3)})`
         ctx.fillText(ch, c * CELL, r * CELL)
       }
     }
