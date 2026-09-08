@@ -74,7 +74,7 @@ const lastRowStart = Math.floor((posts.length - 1) / COLS) * COLS
   text-decoration: none;
 }
 .all-link:hover {
-  color: var(--rust);
+  color: var(--ikb);
 }
 
 /* 两列栅格：单列时一行 60+ 字太宽，两列把每行压到 ~36 字（中文最佳阅读区间） */
@@ -114,9 +114,9 @@ const lastRowStart = Math.floor((posts.length - 1) / COLS) * COLS
   text-decoration: none;
 }
 .post-title:hover {
-  color: var(--rust);
+  color: var(--ikb);
   text-decoration: underline;
-  text-decoration-color: rgba(168, 68, 42, 0.45);
+  text-decoration-color: rgba(0, 47, 167, 0.45);
   text-underline-offset: 4px;
   text-decoration-thickness: 1.5px;
 }
