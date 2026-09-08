@@ -88,11 +88,11 @@ function startParticles(canvas) {
         .trim() || 'JetBrains Mono, Consolas, monospace'
     ctx.font = `500 ${FONT_SIZE}px ${mono}`
     ctx.textBaseline = 'top'
-    // 暗幕：默认把照片压暗到文字清晰；光点密的地方会被"擦亮"
+    // 暗幕：纯黑重压（用户指定），光点密的地方被"擦亮"露出照片
     scrim = ctx.createLinearGradient(0, 0, 0, h)
-    scrim.addColorStop(0, 'rgba(24, 18, 12, 0.72)')
-    scrim.addColorStop(0.45, 'rgba(24, 18, 12, 0.62)')
-    scrim.addColorStop(1, 'rgba(24, 18, 12, 0.76)')
+    scrim.addColorStop(0, 'rgba(0, 0, 0, 0.9)')
+    scrim.addColorStop(0.45, 'rgba(0, 0, 0, 0.86)')
+    scrim.addColorStop(1, 'rgba(0, 0, 0, 0.93)')
     // 光罩图：每格 1 像素，放大绘制时 bilinear 平滑成柔光斑
     const cols = Math.ceil(w / CELL) + 1
     const rows = Math.ceil(h / CELL) + 1
