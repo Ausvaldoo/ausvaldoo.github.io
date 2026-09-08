@@ -43,10 +43,15 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
   margin: 0 0 10px;
   padding: 0;
   border: none;
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--vp-c-text-3);
+  letter-spacing: 0.22em;
+  color: var(--rust);
+}
+.archive-year::before {
+  content: '—— ';
+  letter-spacing: 0;
 }
 .archive-list {
   list-style: none;
@@ -66,19 +71,25 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
 .archive-date {
   flex: none;
   width: 46px;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
   color: var(--vp-c-text-3);
   font-variant-numeric: tabular-nums;
 }
 .archive-title {
   flex: 1;
-  font-size: 15px;
-  line-height: 1.5;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.55;
   color: var(--vp-c-text-1);
   text-decoration: none;
 }
 .archive-title:hover {
-  color: var(--vp-c-brand-1);
+  color: var(--rust);
+  text-decoration: underline;
+  text-decoration-color: rgba(168, 68, 42, 0.45);
+  text-underline-offset: 4px;
 }
 .archive-cat {
   flex: none;

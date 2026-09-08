@@ -78,9 +78,19 @@ export default defineConfig({
   },
 
   head: [
-    ['meta', { name: 'theme-color', content: '#1E8449' }],
+    ['meta', { name: 'theme-color', content: '#f6f1e6' }],
     ['meta', { name: 'author', content: '牧神' }],
-    ['link', { rel: 'icon', type: 'image/jpeg', href: '/zhihu_avatar.jpg' }]
+    ['link', { rel: 'icon', type: 'image/jpeg', href: '/zhihu_avatar.jpg' }],
+    // 衬线字体（Google Fonts 国内镜像），Playfair 用于西文刊名、Noto Serif SC 用于中文标题
+    ['link', { rel: 'preconnect', href: 'https://fonts.loli.net' }],
+    ['link', { rel: 'preconnect', href: 'https://gstatic.loli.net', crossorigin: '' }],
+    [
+      'link',
+      {
+        rel: 'stylesheet',
+        href: 'https://fonts.loli.net/css2?family=Playfair+Display:ital,wght@0,700;1,600&family=Noto+Serif+SC:wght@600;700;900&display=swap'
+      }
+    ]
   ],
 
   sitemap: {

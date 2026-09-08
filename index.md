@@ -22,7 +22,10 @@ const COLS = 2
 const lastRowStart = Math.floor((posts.length - 1) / COLS) * COLS
 </script>
 
-## 最新文章
+<div class="section-head">
+  <span class="kicker">最新文章</span>
+  <a class="all-link" href="/posts/">全部文章 →</a>
+</div>
 
 <ul class="post-list">
   <li v-for="(post, i) in posts" :key="post.url" class="post-item" :class="{ 'is-last-row': i >= lastRowStart }">
@@ -38,6 +41,42 @@ const lastRowStart = Math.floor((posts.length - 1) / COLS) * COLS
 </ul>
 
 <style scoped>
+/* 栏目头：等宽小字 kicker + 细线 + 全部文章入口 */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 8px 0 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--vp-c-text-1);
+}
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  color: var(--rust);
+}
+.kicker::before {
+  content: '';
+  width: 26px;
+  height: 2px;
+  background: var(--rust);
+}
+.all-link {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--vp-c-text-3);
+  text-decoration: none;
+}
+.all-link:hover {
+  color: var(--rust);
+}
+
 /* 两列栅格：单列时一行 60+ 字太宽，两列把每行压到 ~36 字（中文最佳阅读区间） */
 .post-list {
   margin: 0;
@@ -67,14 +106,19 @@ const lastRowStart = Math.floor((posts.length - 1) / COLS) * COLS
   gap: 6px;
 }
 .post-title {
-  font-size: 17px;
-  font-weight: 600;
-  line-height: 1.45;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.5;
   color: var(--vp-c-text-1);
   text-decoration: none;
 }
 .post-title:hover {
-  color: var(--vp-c-brand-1);
+  color: var(--rust);
+  text-decoration: underline;
+  text-decoration-color: rgba(168, 68, 42, 0.45);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
 }
 
 /* 摘要：默认恰好 3 行，max-height 取 3 倍行高，
@@ -96,8 +140,10 @@ const lastRowStart = Math.floor((posts.length - 1) / COLS) * COLS
 
 .post-meta {
   display: flex;
-  gap: 12px;
-  font-size: 12.5px;
+  gap: 14px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
   color: var(--vp-c-text-3);
 }
 .post-cat {
