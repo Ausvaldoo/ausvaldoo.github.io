@@ -84,6 +84,7 @@ export default defineConfig({
   ],
 
   sitemap: {
-    hostname: 'https://blog.secontrol.cn'
+    // GitHub Pages 默认域名；以后若买个人域名，改这里 + 在 public/ 放 CNAME 文件
+    hostname: 'https://ausvaldoo.github.io'
   }
 })
