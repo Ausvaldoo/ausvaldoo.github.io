@@ -88,11 +88,12 @@ function startParticles(canvas) {
         .trim() || 'JetBrains Mono, Consolas, monospace'
     ctx.font = `500 ${FONT_SIZE}px ${mono}`
     ctx.textBaseline = 'top'
-    // 暗幕：纯黑重压（用户指定），光点密的地方被"擦亮"露出照片
+    // 暗幕：近乎全黑（96%~98%），照片平时完全看不见；
+    // 只有光点波动幅度大的波峰顶点才被"擦亮"，透过一小块看到照片
     scrim = ctx.createLinearGradient(0, 0, 0, h)
-    scrim.addColorStop(0, 'rgba(0, 0, 0, 0.9)')
-    scrim.addColorStop(0.45, 'rgba(0, 0, 0, 0.86)')
-    scrim.addColorStop(1, 'rgba(0, 0, 0, 0.93)')
+    scrim.addColorStop(0, 'rgba(0, 0, 0, 0.97)')
+    scrim.addColorStop(0.45, 'rgba(0, 0, 0, 0.96)')
+    scrim.addColorStop(1, 'rgba(0, 0, 0, 0.98)')
     // 光罩图：每格 1 像素，放大绘制时 bilinear 平滑成柔光斑
     const cols = Math.ceil(w / CELL) + 1
     const rows = Math.ceil(h / CELL) + 1
@@ -164,10 +165,11 @@ function startParticles(canvas) {
           }
         }
 
-        // 光罩强度 = 点阵亮度（呼吸场波峰即光点）+ 鼠标尾流加成
+        // 光罩强度：只有波动幅度大的波峰顶点才够格擦开遮罩
+        // 阈值 0.74 → 平时一片黑，仅峰值处透出小块照片
         const li = (r * (cols + 1) + c) * 4
         const lum = Math.min(1, v + mFall * 0.55 + Math.max(0, mWave) * 0.25)
-        const erase = Math.max(0, lum - 0.4) * 1.7
+        const erase = Math.min(0.92, Math.max(0, lum - 0.74) * 3.4)
         light[li] = 0
         light[li + 1] = 0
         light[li + 2] = 0
