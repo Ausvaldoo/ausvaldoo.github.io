@@ -75,16 +75,16 @@ function startParticles(canvas) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
     pts = []
-    const gap = 30
+    const gap = 20 // 高密度网格（原 30 太松散）；1440×480 下约 2100 粒子
     const cols = Math.ceil(w / gap) + 1
     const rows = Math.ceil(h / gap) + 1
     for (let j = 0; j < rows; j++) {
       for (let i = 0; i < cols; i++) {
         pts.push({
-          x: i * gap + (Math.random() - 0.5) * 12,
-          y: j * gap + (Math.random() - 0.5) * 12,
+          x: i * gap + (Math.random() - 0.5) * 10,
+          y: j * gap + (Math.random() - 0.5) * 10,
           plus: (i + j) % 2 === 0, // 加号与圆点棋盘式交替
-          s: 2.4 + Math.random() * 1.8,
+          s: 2.0 + Math.random() * 1.4,
           rot: (Math.random() - 0.5) * 0.5,
           ph: Math.random() * Math.PI * 2,
           rust: Math.random() < 0.07
@@ -100,23 +100,23 @@ function startParticles(canvas) {
     const rust = dark ? '207,107,74' : '168,68,42'
 
     for (const p of pts) {
-      // 水波：相位随 (x+y) 推移，形成斜向荡开的波
-      const wave = Math.sin(t * 0.0016 + (p.x + p.y) * 0.013 + p.ph)
-      const sc = 0.62 + 0.46 * (wave * 0.5 + 0.5)
-      // 缓慢漂移，避免阵列感
+      // 水波：相位随 (x+y) 推移，形成斜向荡开的波（默认就动，肉眼可见）
+      const wave = Math.sin(t * 0.0018 + (p.x + p.y) * 0.013 + p.ph)
+      const sc = 0.55 + 0.5 * (wave * 0.5 + 0.5)
+      // 缓慢漂移 + 随波上下浮动（浮动幅度 4.5px，是"默认在动"的关键）
       const ox = Math.sin(t * 0.0006 + p.y * 0.02 + p.ph) * 3
-      const oy = Math.cos(t * 0.0005 + p.x * 0.02 + p.ph) * 3
+      const oy = Math.cos(t * 0.0005 + p.x * 0.02 + p.ph) * 2 + wave * 4.5
 
-      // 鼠标涟漪：半径 130px 内，粒子被轻推 + 增亮 + 放大
+      // 鼠标涟漪：半径 140px 内，粒子被推开 + 增亮 + 放大
       const dx = p.x + ox - mx
       const dy = p.y + oy - my
       const d2 = dx * dx + dy * dy
-      const near = d2 < 16900 // 130^2
-      const k = near ? 1 - Math.sqrt(d2) / 130 : 0
-      const push = k * k * 10
+      const near = d2 < 19600 // 140^2
+      const k = near ? 1 - Math.sqrt(d2) / 140 : 0
+      const push = k * k * 14
       const ang = Math.atan2(dy, dx)
 
-      const a = Math.min((0.15 + 0.32 * (wave * 0.5 + 0.5)) * (1 + k * 1.6), 0.9)
+      const a = Math.min((0.18 + 0.36 * (wave * 0.5 + 0.5)) * (1 + k * 1.8), 0.9)
       const col = p.rust ? rust : ink
       const s = p.s * sc * (1 + k * 0.9)
       const px = p.x + ox + (near ? Math.cos(ang) * push : 0)
