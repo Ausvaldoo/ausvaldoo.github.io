@@ -108,6 +108,8 @@ function startParticles(canvas) {
           Math.sin(Math.hypot(c - cx, r - cy) * 0.16 - tSec * 0.55)
         ) / 4
         let v = (n + 1) / 2 // [0,1]
+        // 亮底上淡点不可见：拉大波动幅度，让字符沿梯度充分形变（呼吸感的关键）
+        v = Math.min(1, Math.max(0, 0.5 + (v - 0.5) * 1.45))
 
         // 鼠标尾流：对轨迹上每个波源求空间×时间衰减，角向摆动破坏正圆
         let mFall = 0
@@ -145,7 +147,8 @@ function startParticles(canvas) {
         const ch = PALETTE[Math.min(PALETTE.length - 1, Math.floor(v * PALETTE.length))]
         if (ch === ' ') continue
         // 柿橙底上的暖白点阵；鼠标尾流处点阵转墨色（海报落墨）
-        const alpha = Math.min((0.08 + (v - 0.22) * 0.55) * (1 + mFall * 0.6), 0.95)
+        // 亮底需要更高基础透明度，点才立得住
+        const alpha = Math.min((0.22 + (v - 0.22) * 0.72) * (1 + mFall * 0.6), 0.95)
         const col = mFall > 0.3 ? '43,36,28' : '255,248,238'
         ctx.fillStyle = `rgba(${col},${alpha.toFixed(3)})`
         ctx.fillText(ch, c * CELL, r * CELL)
