@@ -83,7 +83,8 @@ html.dark body::after {
   background: rgba(168, 68, 42, 0.28);
 }
 
-/* ---------- ③ Hero：墨色深底 × 暖白点阵呼吸场（电子墨水的"夜间封面"） ----------
+/* ---------- ③ Hero：柿橙海报底 × 暖白点阵呼吸场 ----------
+   高饱和中高亮度 = 鲜艳而不压抑；与暖纸/赭红同族类比色，色温连续
    --hero-y 滚动像素 / --hero-p 进度 0→1（JS 写入）：
    点阵场放大渐隐退场，文字向左滑出渐隐，下方纸面内容上移占领空间 */
 .VPHero {
@@ -92,10 +93,10 @@ html.dark body::after {
   min-height: 480px;
   display: flex;
   align-items: center;
-  /* 暖墨色纵深：与纸面同族色温，深而不冷 */
+  /* 柿橙：hsl(20~28, 100%, 48~55%)，海报式饱和 */
   background:
-    radial-gradient(120% 90% at 50% 38%, #372e20 0%, #262016 52%, #191410 100%);
-  --vp-home-hero-name-color: #f6f1e6;
+    radial-gradient(120% 90% at 50% 38%, #ff8a3d 0%, #ef5f14 52%, #d64a08 100%);
+  --vp-home-hero-name-color: #fffdf8;
 }
 
 /* 粒子画布（JS 注入 .hero-particles）：白色点阵，慢速视差 + 滚动放大渐隐 */
@@ -122,13 +123,13 @@ html.dark body::after {
   will-change: transform, opacity;
 }
 
-/* 蓝底上的白字体系 → 墨底上的暖纸白字体系 */
+/* 橙底白字体系 */
 .VPHero .name,
 .VPHero .text {
   font-family: var(--font-serif);
   font-weight: 700;
   letter-spacing: 0.01em;
-  color: #f6f1e6;
+  color: #fffdf8;
 }
 .VPHero .name {
   font-size: clamp(2.4rem, 4.6vw, 3.6rem);
@@ -140,46 +141,47 @@ html.dark body::after {
   font-family: var(--font-mono);
   font-size: 14px;
   letter-spacing: 0.04em;
-  color: rgba(236, 226, 208, 0.72);
+  color: rgba(255, 248, 238, 0.9);
 }
 
-/* 按钮：直角、等宽字 —— 墨底上纸色实体 / 暖白描边 */
+/* 按钮：直角、等宽字 —— 橙底上墨色实体（海报感）/ 墨色描边 */
 .VPButton {
   border-radius: 2px !important;
   transition: background-color 0.25s ease, color 0.25s ease,
     border-color 0.25s ease;
 }
 .VPHero .actions .VPButton.brand {
-  background-color: #f6f1e6;
-  border-color: #f6f1e6;
-  color: #262016;
+  background-color: #2b241c;
+  border-color: #2b241c;
+  color: #fff8ec;
   font-family: var(--font-mono);
   font-size: 14px;
   letter-spacing: 0.05em;
 }
 .VPHero .actions .VPButton.brand:hover {
-  background-color: var(--rust);
-  border-color: var(--rust);
-  color: #fff8ec;
+  background-color: #fff8ec;
+  border-color: #fff8ec;
+  color: #d64a08;
 }
 .VPHero .actions .VPButton.alt {
   background: transparent;
-  border: 1.5px solid rgba(236, 226, 208, 0.85);
-  color: #ece2d0;
+  border: 1.5px solid rgba(43, 36, 28, 0.85);
+  color: #2b241c;
   font-family: var(--font-mono);
   font-size: 14px;
   letter-spacing: 0.05em;
 }
 .VPHero .actions .VPButton.alt:hover {
-  background-color: rgba(236, 226, 208, 0.14);
-  border-color: #ece2d0;
-  color: #f6f1e6;
+  background-color: rgba(43, 36, 28, 0.92);
+  border-color: #2b241c;
+  color: #fff8ec;
 }
 
-/* 首页顶部导航压在墨底上：字转暖白（仅 y=0 的 .top 态；下滑后导航有纸底，恢复墨色） */
+/* 首页顶部导航压在橙底上：字转墨色（深字亮底，小字号可读性优于白字；
+   仅 y=0 的 .top 态；下滑后导航有纸底，同为墨色无缝衔接） */
 body:has(.VPHome) .VPNavBar.top:not(.focus) .VPNavBarTitle .title,
 body:has(.VPHome) .VPNavBar.top:not(.focus) .VPNavBarMenuLink {
-  color: rgba(236, 226, 208, 0.92);
+  color: rgba(43, 36, 28, 0.92);
 }
 body:has(.VPHome) .VPNavBar.top:not(.focus) .VPNavBarHamburger .container span {
   --vp-c-text-1: rgba(255, 255, 255, 0.92);

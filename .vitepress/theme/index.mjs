@@ -144,9 +144,9 @@ function startParticles(canvas) {
         if (v < 0.22) continue
         const ch = PALETTE[Math.min(PALETTE.length - 1, Math.floor(v * PALETTE.length))]
         if (ch === ' ') continue
-        // 暖墨底上的暖纸白点阵；鼠标尾流处点阵转赭红（全站点睛色回归封面）
+        // 柿橙底上的暖白点阵；鼠标尾流处点阵转墨色（海报落墨）
         const alpha = Math.min((0.08 + (v - 0.22) * 0.55) * (1 + mFall * 0.6), 0.95)
-        const col = mFall > 0.3 ? '224,133,96' : '236,226,208'
+        const col = mFall > 0.3 ? '43,36,28' : '255,248,238'
         ctx.fillStyle = `rgba(${col},${alpha.toFixed(3)})`
         ctx.fillText(ch, c * CELL, r * CELL)
       }
