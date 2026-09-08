@@ -49,7 +49,7 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.22em;
-  color: var(--ikb);
+  color: var(--rust);
 }
 .archive-year::before {
   content: '—— ';
@@ -89,9 +89,9 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
   text-decoration: none;
 }
 .archive-title:hover {
-  color: var(--ikb);
+  color: var(--rust);
   text-decoration: underline;
-  text-decoration-color: rgba(0, 47, 167, 0.45);
+  text-decoration-color: rgba(168, 68, 42, 0.45);
   text-underline-offset: 4px;
 }
 .archive-cat {

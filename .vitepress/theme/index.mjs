@@ -47,11 +47,12 @@ function setupHeroParallax(router) {
 }
 
 /* =========================================================
- * Hero 粒子场 v3：「ASCII 点阵呼吸场」（移植自瑞士风 PLC 演讲 PPT 首页）
+ * Hero 粒子场 v4：「ASCII 点阵呼吸场」+ 手绘式水面尾流
  * - 字符点阵 . : - + * ◦ • ▢ 由四组 sin/cos 噪声场驱动显隐，
- *   默认即"涌动呼吸"；密度 CELL=16px，与 PPT 完全一致
- * - 双模式：无鼠标 → 自动呼吸；鼠标进入 → 以光标为圆心的涟漪
- *   （亮度增强 + 赭红着色 + 波纹外扩），静止 2.5s 后回到呼吸模式
+ *   默认即"涌动呼吸"；密度 CELL=16px
+ * - 鼠标模式 = 轨迹尾流：移动时沿路径撒下一串波源（错峰 + 时间衰减），
+ *   叠瓦出弯曲水痕；每处波再带角向摆动，杜绝正圆的机械感
+ *   —— 快划是长尾浪，慢移是浅涟漪，停住 2.5s 回到自动呼吸
  * - hero 滚出视口 / 标签页隐藏自动暂停；reduced-motion 只画一帧
  * ========================================================= */
 function startParticles(canvas) {
@@ -67,8 +68,7 @@ function startParticles(canvas) {
   let h = 0
   let raf = null
   let running = false
-  let mx = -99999
-  let my = -99999
+  const trail = [] // 鼠标轨迹波源 {x, y, t}
   let lastMove = 0
 
   const setup = () => {
@@ -92,8 +92,11 @@ function startParticles(canvas) {
     const rows = Math.ceil(h / CELL)
     const cx = cols * 0.5
     const cy = rows * 0.5
-    const hasMouse = mx > -99999
     const now = performance.now()
+
+    // 清理 700ms 前的旧波源；轨迹空 = 自动呼吸模式
+    while (trail.length && now - trail[0].t > 700) trail.shift()
+    const hasMouse = trail.length > 0
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -106,16 +109,33 @@ function startParticles(canvas) {
         ) / 4
         let v = (n + 1) / 2 // [0,1]
 
-        // 鼠标模式：以光标为圆心的涟漪（亮度抬升 + 波纹外扩）
+        // 鼠标尾流：对轨迹上每个波源求空间×时间衰减，角向摆动破坏正圆
         let mFall = 0
+        let mWave = 0
         if (hasMouse) {
-          const dx = c * CELL - mx
-          const dy = r * CELL - my
-          const d = Math.sqrt(dx * dx + dy * dy)
-          mFall = Math.exp(-d / 110)
+          const px = c * CELL
+          const py = r * CELL
+          for (let i = 0; i < trail.length; i++) {
+            const p = trail[i]
+            const dx = px - p.x
+            const dy = py - p.y
+            const d2 = dx * dx + dy * dy
+            if (d2 > 32400) continue // 180px 外不参与
+            const age = (now - p.t) / 1000
+            const fall =
+              Math.exp(-d2 / 4200) * Math.exp(-age * 3.2)
+            if (fall < 0.02) continue
+            const ang = Math.atan2(dy, dx)
+            // 角向摆动：同一半径上强弱不均，水痕呈有机曲线
+            const wob = 1 + 0.38 * Math.sin(ang * 3 + tSec * 1.8 + p.t * 0.013)
+            mFall += fall * wob
+            mWave += Math.sqrt(d2) > 1
+              ? Math.sin(Math.sqrt(d2) * 0.085 - tSec * 2.6 + p.t * 0.01) *
+                fall * wob
+              : 0
+          }
           if (mFall > 0.02) {
-            const ripple = Math.sin(d * 0.09 - tSec * 2.4) * mFall
-            v = Math.min(1, v + mFall * 0.55 + ripple * 0.35)
+            v = Math.min(1, v + mFall * 0.5 + mWave * 0.4)
           } else {
             mFall = 0
           }
@@ -124,17 +144,15 @@ function startParticles(canvas) {
         if (v < 0.22) continue
         const ch = PALETTE[Math.min(PALETTE.length - 1, Math.floor(v * PALETTE.length))]
         if (ch === ' ') continue
-        // PPT 封面同款：IKB 蓝底上的白色点阵（屏幕混合的发亮感）
+        // 暖墨底上的暖纸白点阵；鼠标尾流处点阵转赭红（全站点睛色回归封面）
         const alpha = Math.min((0.08 + (v - 0.22) * 0.55) * (1 + mFall * 0.6), 0.95)
-        ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`
+        const col = mFall > 0.3 ? '224,133,96' : '236,226,208'
+        ctx.fillStyle = `rgba(${col},${alpha.toFixed(3)})`
         ctx.fillText(ch, c * CELL, r * CELL)
       }
     }
-    // 鼠标静止 2.5s 后退出鼠标模式，回到自动呼吸
-    if (hasMouse && now - lastMove > 2500) {
-      mx = -99999
-      my = -99999
-    }
+    // 鼠标静止 2.5s 后清空轨迹，回到自动呼吸
+    if (hasMouse && now - lastMove > 2500) trail.length = 0
   }
 
   let t0 = 0
@@ -160,17 +178,26 @@ function startParticles(canvas) {
     draw(0) // 减弱动效：静态点阵一帧
   } else {
     start()
-    // 鼠标模式触发：监听 hero 区域的指针移动
+    // 鼠标轨迹采样：距离/时间双阈值去密，最多保留 18 个波源
     const zone = canvas.parentElement || canvas
     zone.addEventListener('pointermove', (e) => {
       const r = canvas.getBoundingClientRect()
-      mx = e.clientX - r.left
-      my = e.clientY - r.top
-      lastMove = performance.now()
+      const x = e.clientX - r.left
+      const y = e.clientY - r.top
+      const now = performance.now()
+      const last = trail[trail.length - 1]
+      if (
+        !last ||
+        now - last.t > 24 ||
+        (x - last.x) * (x - last.x) + (y - last.y) * (y - last.y) > 64
+      ) {
+        trail.push({ x, y, t: now })
+        if (trail.length > 18) trail.shift()
+      }
+      lastMove = now
     })
     zone.addEventListener('pointerleave', () => {
-      mx = -99999
-      my = -99999
+      trail.length = 0
     })
   }
 
