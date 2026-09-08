@@ -70,6 +70,10 @@ function startParticles(canvas) {
   let running = false
   const trail = [] // 鼠标轨迹波源 {x, y, t}
   let lastMove = 0
+  let lightCv = null // 低分辨率光罩图：呼吸场亮度 → 遮罩擦除强度
+  let lightCtx = null
+  let lightImg = null
+  let scrim = null // 暗幕渐变缓存
 
   const setup = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -84,10 +88,26 @@ function startParticles(canvas) {
         .trim() || 'JetBrains Mono, Consolas, monospace'
     ctx.font = `500 ${FONT_SIZE}px ${mono}`
     ctx.textBaseline = 'top'
+    // 暗幕：默认把照片压暗到文字清晰；光点密的地方会被"擦亮"
+    scrim = ctx.createLinearGradient(0, 0, 0, h)
+    scrim.addColorStop(0, 'rgba(24, 18, 12, 0.72)')
+    scrim.addColorStop(0.45, 'rgba(24, 18, 12, 0.62)')
+    scrim.addColorStop(1, 'rgba(24, 18, 12, 0.76)')
+    // 光罩图：每格 1 像素，放大绘制时 bilinear 平滑成柔光斑
+    const cols = Math.ceil(w / CELL) + 1
+    const rows = Math.ceil(h / CELL) + 1
+    lightCv = document.createElement('canvas')
+    lightCv.width = cols
+    lightCv.height = rows
+    lightCtx = lightCv.getContext('2d')
+    lightImg = lightCtx.createImageData(cols, rows)
   }
 
   const draw = (tSec) => {
+    // ① 暗幕打底：照片默认被压暗，文字清晰
     ctx.clearRect(0, 0, w, h)
+    ctx.fillStyle = scrim
+    ctx.fillRect(0, 0, w, h)
     const cols = Math.ceil(w / CELL)
     const rows = Math.ceil(h / CELL)
     const cx = cols * 0.5
@@ -97,6 +117,7 @@ function startParticles(canvas) {
     // 清理 700ms 前的旧波源；轨迹空 = 自动呼吸模式
     while (trail.length && now - trail[0].t > 700) trail.shift()
     const hasMouse = trail.length > 0
+    const light = lightImg.data
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -143,6 +164,15 @@ function startParticles(canvas) {
           }
         }
 
+        // 光罩强度 = 点阵亮度（呼吸场波峰即光点）+ 鼠标尾流加成
+        const li = (r * (cols + 1) + c) * 4
+        const lum = Math.min(1, v + mFall * 0.55 + Math.max(0, mWave) * 0.25)
+        const erase = Math.max(0, lum - 0.4) * 1.7
+        light[li] = 0
+        light[li + 1] = 0
+        light[li + 2] = 0
+        light[li + 3] = Math.min(255, Math.round(erase * 255))
+
         if (v < 0.22) continue
         const ch = PALETTE[Math.min(PALETTE.length - 1, Math.floor(v * PALETTE.length))]
         if (ch === ' ') continue
@@ -152,6 +182,15 @@ function startParticles(canvas) {
         ctx.fillText(ch, c * CELL, r * CELL)
       }
     }
+
+    // ② 光罩擦除：destination-out 把暗幕在"光点亮"的地方擦薄，
+    //    低分辨率图放大绘制，柔化成有机光斑，随水波游走
+    lightCtx.putImageData(lightImg, 0, 0)
+    ctx.globalCompositeOperation = 'destination-out'
+    ctx.imageSmoothingEnabled = true
+    ctx.drawImage(lightCv, 0, 0, w, h)
+    ctx.globalCompositeOperation = 'source-over'
+
     // 鼠标静止 2.5s 后清空轨迹，回到自动呼吸
     if (hasMouse && now - lastMove > 2500) trail.length = 0
   }
@@ -232,6 +271,7 @@ function ensureHeroCanvas() {
   c.className = 'hero-particles'
   c.setAttribute('aria-hidden', 'true')
   hero.appendChild(c)
+  hero.classList.add('has-mask') // 暗幕已入画布，隐藏 CSS 兜底遮罩
   startParticles(c)
   return true
 }
