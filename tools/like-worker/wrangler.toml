@@ -7,4 +7,4 @@ compatibility_date = "2026-01-01"
 # 把输出的 id 填到下面
 [[kv_namespaces]]
 binding = "LIKES"
-id = "在这里填wrangler给你的id"
+id = "1073e1ed48434747b39ee62af8a92b61"

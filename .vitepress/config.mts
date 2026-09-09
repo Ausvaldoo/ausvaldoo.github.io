@@ -21,7 +21,9 @@ export default defineConfig({
     'posts/_templates/**',
     'posts/drafts/**',
     'drafts/**',
-    'README.md'
+    'README.md',
+    // 部署脚本 / 内部说明不对外发布
+    'tools/**'
   ],
 
   themeConfig: {
