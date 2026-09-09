@@ -41,15 +41,14 @@ function fmtDate(d) {
 const MAX = 700 // 摘要上限：约 8~9 行，折叠 3 行时悬停有足够内容可展开
 
 export default createContentLoader('posts/*.md', {
-  excerpt: true,
+  render: true,
   transform(raw) {
     return raw
-      .map(({ url, frontmatter, excerpt }) => {
-        // 正文优先（信息量足），description 兜底
+      .map(({ url, frontmatter, html }) => {
+        // description 优先（作者手写的摘要）；只有描述为空/极短才回退正文全文
         let text = descToPlain(frontmatter.description)
-        if (text.length < 200) text = ''
-        const body = htmlToPlain(excerpt)
-        if (body.length > text.length) text = body
+        if (text.length < 20) text = ''
+        if (!text) text = htmlToPlain(html)
         return {
           url,
           title: frontmatter.title || '',
