@@ -14,6 +14,7 @@
   --ink-faint: #969188;
   --rust: #a8442a;
   --rust-deep: #8c3721;
+  --nav-glass: rgba(241, 239, 234, 0.8);
 
   --font-serif: 'Playfair Display', 'Noto Serif SC', 'Source Han Serif SC',
     'STZhongsong', 'SimSun', serif;
@@ -51,6 +52,7 @@
   --ink-faint: #6e6b64;
   --rust: #cf6b4a;
   --rust-deep: #e08560;
+  --nav-glass: rgba(22, 22, 22, 0.8);
   --vp-c-divider: #2e2e30;
   --vp-c-border: #3a3a3c;
   --vp-c-brand-soft: rgba(207, 107, 74, 0.16);
@@ -289,4 +291,195 @@ html.has-reveal .archive-group.revealed {
   opacity: 0.9;
   pointer-events: none;
   z-index: 1;
+}
+
+/* ---------- ⑩ 顶部滚动进度条（JS 注入 .scroll-progress） ---------- */
+.scroll-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 100;
+  pointer-events: none;
+  background: linear-gradient(90deg, var(--rust), var(--rust-deep));
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+}
+
+/* ---------- ⑪ 导航栏滚动态：毛玻璃 + 细分隔线 ---------- */
+.VPNav {
+  transition: box-shadow 0.3s ease;
+}
+.VPNav.is-scrolled .VPNavBar {
+  background: var(--nav-glass);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.VPNav.is-scrolled .VPNavBar.has-sidebar {
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+/* ---------- ⑫ Hero 入场：标题/题句/标签/按钮逐层浮现 ---------- */
+.VPHero .name {
+  animation: hero-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.VPHero .text {
+  animation: hero-rise 0.7s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.VPHero .tagline {
+  animation: hero-rise 0.7s 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.VPHero .actions {
+  animation: hero-rise 0.7s 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- ⑬ 文章卡片：悬停微抬升 + 柔影 + 标题下划线描画 ---------- */
+.post-item {
+  transition: background-color 0.25s ease, transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+.post-item:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(10, 10, 11, 0.06);
+}
+.post-title {
+  background-image: linear-gradient(var(--rust), var(--rust));
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0 1.5px;
+  transition: background-size 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.25s ease;
+}
+.post-item:hover .post-title {
+  background-size: 100% 1.5px;
+  color: var(--rust);
+}
+
+/* ---------- ⑭ 回到顶部按钮 + 阅读进度环（JS 注入 .to-top） ---------- */
+.to-top {
+  position: fixed;
+  right: 26px;
+  bottom: 26px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--vp-c-bg-elv);
+  border: 1px solid var(--vp-c-divider);
+  box-shadow: 0 8px 24px rgba(10, 10, 11, 0.1);
+  cursor: pointer;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s,
+    border-color 0.25s ease;
+}
+.to-top.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+.to-top:hover {
+  border-color: var(--rust);
+}
+.tt-ring {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.tt-track {
+  fill: none;
+  stroke: var(--vp-c-divider);
+  stroke-width: 2;
+}
+.tt-fill {
+  fill: none;
+  stroke: var(--rust);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.tt-arrow {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--vp-c-text-1);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- ⑮ 细滚动条（墨水风） ---------- */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--vp-c-text-3) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--vp-c-text-3);
+  border-radius: 6px;
+  border: 2px solid var(--vp-c-bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vp-c-text-2);
+}
+
+/* ---------- ⑯ 正文图片悬停微缩放 ---------- */
+.vp-doc img {
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), filter 0.5s ease;
+}
+.vp-doc img:hover {
+  transform: scale(1.02);
+}
+
+/* ---------- ⑰ 减弱动效兜底：新增动效一并关闭 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .scroll-progress,
+  .to-top {
+    display: none;
+  }
+  .VPHero .name,
+  .VPHero .text,
+  .VPHero .tagline,
+  .VPHero .actions {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .post-item {
+    transition: none;
+  }
+  .post-item:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  .post-title {
+    transition: none;
+  }
+  .vp-doc img,
+  .vp-doc img:hover {
+    transition: none;
+    transform: none;
+  }
 }

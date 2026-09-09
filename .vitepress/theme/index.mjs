@@ -223,11 +223,101 @@ function ensureHeroWake() {
   return true
 }
 
+/**
+ * 顶部滚动进度条：细线随阅读进度从左往右生长。
+ * 用 transform:scaleX 而非 width，避免触发布局重排。
+ */
+function setupScrollProgress() {
+  if (typeof window === 'undefined') return
+  const bar = document.createElement('div')
+  bar.className = 'scroll-progress'
+  bar.setAttribute('aria-hidden', 'true')
+  document.body.appendChild(bar)
+  let raf = null
+  const update = () => {
+    raf = null
+    const h = document.documentElement
+    const max = h.scrollHeight - h.clientHeight
+    const p = max > 0 ? Math.min(window.scrollY / max, 1) : 0
+    bar.style.transform = `scaleX(${p.toFixed(4)})`
+  }
+  const onScroll = () => {
+    if (raf === null) raf = requestAnimationFrame(update)
+  }
+  window.addEventListener('scroll', onScroll, { passive: true })
+  window.addEventListener('resize', onScroll)
+  update()
+}
+
+/**
+ * 导航栏滚动态：滚过阈值后加 is-scrolled，触发毛玻璃 + 细分隔线。
+ * 只切 class，不碰 DOM 结构。
+ */
+function setupNavState() {
+  if (typeof window === 'undefined') return
+  let raf = null
+  const update = () => {
+    raf = null
+    const nav = document.querySelector('.VPNav')
+    if (nav) nav.classList.toggle('is-scrolled', window.scrollY > 8)
+  }
+  const onScroll = () => {
+    if (raf === null) raf = requestAnimationFrame(update)
+  }
+  window.addEventListener('scroll', onScroll, { passive: true })
+  window.addEventListener('resize', onScroll)
+  update()
+}
+
+/**
+ * 回到顶部按钮 + 阅读进度环：右下角浮钮，圆环随进度画满。
+ * prefers-reduced-motion 时降级为瞬间跳转（无平滑滚动）。
+ */
+function setupBackToTop() {
+  if (typeof window === 'undefined') return
+  const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const btn = document.createElement('button')
+  btn.className = 'to-top'
+  btn.type = 'button'
+  btn.setAttribute('aria-label', '回到顶部')
+  btn.innerHTML =
+    '<svg class="tt-ring" viewBox="0 0 44 44" aria-hidden="true">' +
+    '<circle class="tt-track" cx="22" cy="22" r="19"/>' +
+    '<circle class="tt-fill" cx="22" cy="22" r="19"/></svg>' +
+    '<svg class="tt-arrow" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M12 19V5M5 12l7-7 7 7"/></svg>'
+  document.body.appendChild(btn)
+  btn.addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' })
+  })
+  const C = 2 * Math.PI * 19
+  const fill = btn.querySelector('.tt-fill')
+  fill.style.strokeDasharray = String(C)
+  let raf = null
+  const update = () => {
+    raf = null
+    const h = document.documentElement
+    const max = h.scrollHeight - h.clientHeight
+    const p = max > 0 ? Math.min(window.scrollY / max, 1) : 0
+    fill.style.strokeDashoffset = String(C * (1 - p))
+    btn.classList.toggle('visible', window.scrollY > 400)
+  }
+  const onScroll = () => {
+    if (raf === null) raf = requestAnimationFrame(update)
+  }
+  window.addEventListener('scroll', onScroll, { passive: true })
+  window.addEventListener('resize', onScroll)
+  update()
+}
+
 export default {
   extends: DefaultTheme,
   enhanceApp({ router }) {
     setupHeroParallax(router)
     setupReveal()
+    setupScrollProgress()
+    setupNavState()
+    setupBackToTop()
     // SSR（构建渲染页）时没有 window/document，直接返回
     if (typeof window === 'undefined') return
     // 自愈轮询：window load 可能被慢速外链字体无限推迟，hydration 也可能
