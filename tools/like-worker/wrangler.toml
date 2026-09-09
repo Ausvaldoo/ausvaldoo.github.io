@@ -1,0 +1,10 @@
+name = "blog-likes"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# KV 命名空间：先跑一次
+#   npx wrangler kv namespace create LIKES
+# 把输出的 id 填到下面
+[[kv_namespaces]]
+binding = "LIKES"
+id = "在这里填wrangler给你的id"
