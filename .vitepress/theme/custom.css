@@ -453,6 +453,25 @@ html {
   transform: scale(1.02);
 }
 
+/* ---------- ⑰ 文章阅读量（不蒜子：第三方按 URL 计数，不种 Cookie） ----------
+   容器默认隐藏，由不蒜子脚本拿到数据后再显示；
+   脚本挂了/被墙时整行不出现，不会露出「阅读  次」这种残缺文案 */
+.view-count {
+  margin-bottom: 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+.view-count b {
+  font-weight: 600;
+  color: var(--rust);
+  font-variant-numeric: tabular-nums;
+}
+#busuanzi_container_page_pv {
+  display: none;
+}
+
 /* ---------- ⑰ 减弱动效兜底：新增动效一并关闭 ---------- */
 @media (prefers-reduced-motion: reduce) {
   .scroll-progress,

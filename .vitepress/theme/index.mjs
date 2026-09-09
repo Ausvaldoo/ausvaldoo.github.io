@@ -1,4 +1,5 @@
 import DefaultTheme from 'vitepress/theme'
+import MyLayout from './MyLayout.vue'
 import './custom.css'
 
 /**
@@ -312,6 +313,7 @@ function setupBackToTop() {
 
 export default {
   extends: DefaultTheme,
+  Layout: MyLayout,
   enhanceApp({ router }) {
     setupHeroParallax(router)
     setupReveal()
