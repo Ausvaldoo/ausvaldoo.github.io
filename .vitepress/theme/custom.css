@@ -522,6 +522,20 @@ html {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+.lb-num {
+  display: inline-block;
+  animation: lb-in 0.35s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+@keyframes lb-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 .lb-btn:hover {
   color: var(--rust);
   border-color: var(--rust);
@@ -592,6 +606,11 @@ html {
   .lb-btn:hover,
   .lb-btn:active {
     transition: none;
+    transform: none;
+  }
+  .lb-num,
+  .lb-num * {
+    animation: none;
     transform: none;
   }
 }

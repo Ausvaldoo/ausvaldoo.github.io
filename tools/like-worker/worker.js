@@ -9,7 +9,10 @@
 
 const ALLOWED_ORIGIN = 'https://ausvaldoo.github.io' // 只允许自己的博客调用
 
-function json(data, status = 200) {
+// 计数变化很慢，允许浏览器短缓存；投票走 POST（浏览器不缓存），不受影响
+const CACHE_HEADER = 'public, max-age=120, stale-while-revalidate=600'
+
+function json(data, status = 200, cacheControl = 'no-store') {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -17,7 +20,7 @@ function json(data, status = 200) {
       'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
-      'Cache-Control': 'no-store',
+      'Cache-Control': cacheControl,
     },
   })
 }
@@ -48,7 +51,7 @@ export default {
     if (request.method === 'GET') {
       const raw = await env.LIKES.get(key)
       const data = raw ? JSON.parse(raw) : { likes: 0, dislikes: 0 }
-      return json(data)
+      return json(data, 200, CACHE_HEADER)
     }
 
     if (request.method === 'POST') {
