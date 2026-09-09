@@ -45,10 +45,13 @@ export default createContentLoader('posts/*.md', {
   transform(raw) {
     return raw
       .map(({ url, frontmatter, html }) => {
-        // description 优先（作者手写的摘要）；只有描述为空/极短才回退正文全文
+        // 正文优先（长，能触发卡片折叠+悬停展开）；description 兜底
+        // （作者手写摘要，同时仍被 VitePress 用于 <meta>/og 描述）。
+        // 只有 description 基本为空才丢弃，其余让"更长者胜"自然决定。
         let text = descToPlain(frontmatter.description)
         if (text.length < 20) text = ''
-        if (!text) text = htmlToPlain(html)
+        const body = htmlToPlain(html)
+        if (body.length > text.length) text = body
         return {
           url,
           title: frontmatter.title || '',
