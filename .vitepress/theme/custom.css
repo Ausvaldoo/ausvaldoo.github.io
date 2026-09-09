@@ -1,7 +1,7 @@
 /* =========================================================
    牧神的笔记 · 电子杂志 × 电子墨水 主题
    暖纸底 + 墨色字 + 赭红点睛 | 衬线标题 + 等宽元数据
-   Hero：动态粒子场（+/· 交替，水波起伏）+ 滚动叙事（左滑渐隐/放大渐隐）
+   动效：流体墨彩背景（纯 CSS）、颗粒、滚动渐显、Hero 视差
    ========================================================= */
 
 /* ---------- ① 调色板：暖纸 / 墨 / 赭红 ---------- */
@@ -41,7 +41,7 @@
     'Microsoft YaHei', 'Noto Sans SC', sans-serif;
 }
 
-/* 墨水夜：整组基础变量反转，所有派生变量自动跟随 */
+/* 墨水夜：整组基础变量反转，所有派生变量（--vp-c-*、标题、按钮）自动跟随 */
 .dark {
   --paper: #17130f;
   --paper-raise: #211b15;
@@ -62,7 +62,7 @@ body {
   font-family: var(--vp-font-family-base);
 }
 
-/* 纸张颗粒：feTurbulence 噪点，亮色正片叠底 / 暗色滤色 */
+/* 纸张颗粒：feTurulence 噪点，亮色正片叠底 / 暗色滤色 */
 body::after {
   content: '';
   position: fixed;
@@ -83,148 +83,111 @@ html.dark body::after {
   background: rgba(168, 68, 42, 0.28);
 }
 
-/* ---------- ③ Hero：封面照片回归 × 白色点阵呼吸场 ----------
-   照片：public/zhihu_cover.jpg（2000×480 超宽条幅）
-   视差三层：照片 0.26 倍速慢移 + 滚动放大渐隐 → 点阵场同步放大渐隐 → 文字左滑渐隐
-   --hero-y 滚动像素 / --hero-p 进度 0→1（JS 写入） */
+/* ---------- ③ Hero：排版即海报，流体墨彩为底 ---------- */
 .VPHero {
   position: relative;
   overflow: hidden;
   min-height: 480px;
   display: flex;
   align-items: center;
-  /* 照片加载前的兜底底色（暖墨） */
-  background: #241e15;
-  --vp-home-hero-name-color: #fffdf8;
+  --vp-home-hero-name-color: var(--ink);
 }
 
-/* 封面照片层：视差慢移 + 滚动放大 + 渐渐消隐
-   几何：位移 d ∈ [0, 0.26h]，top -28% / height 128% 保证始终覆盖容器 */
+/* 三团暖色墨彩缓慢漂移（亮暗两态同源，透明度已按底色调和） */
 .VPHero::before {
   content: '';
   position: absolute;
-  top: -28%;
-  left: 0;
-  right: 0;
-  height: 128%;
-  background-image: url('/zhihu_cover.jpg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  transform: translate3d(0, calc(var(--hero-y, 0px) * 0.26), 0)
-    scale(calc(1 + var(--hero-p, 0) * 0.16));
-  opacity: calc(1 - var(--hero-p, 0) * 0.5);
-  will-change: transform, opacity;
+  inset: -25%;
+  background:
+    radial-gradient(42% 38% at 16% 28%, rgba(168, 68, 42, 0.20), transparent 70%),
+    radial-gradient(48% 42% at 82% 18%, rgba(191, 146, 58, 0.17), transparent 70%),
+    radial-gradient(52% 46% at 68% 82%, rgba(107, 112, 82, 0.17), transparent 70%),
+    radial-gradient(30% 30% at 42% 58%, rgba(168, 68, 42, 0.10), transparent 70%);
+  filter: blur(48px);
+  animation: inkflow 28s ease-in-out infinite alternate;
+  will-change: transform;
   z-index: 0;
 }
-
-/* 无 JS 时的兜底遮罩（纯黑重压，JS 注入暗幕后自动隐藏） */
 .VPHero::after {
   content: '';
   position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0.9) 0%,
-    rgba(0, 0, 0, 0.86) 45%,
-    rgba(0, 0, 0, 0.93) 100%
-  );
-  pointer-events: none;
+  inset: -25%;
+  background:
+    radial-gradient(38% 32% at 70% 35%, rgba(168, 68, 42, 0.11), transparent 70%),
+    radial-gradient(40% 36% at 25% 70%, rgba(191, 146, 58, 0.11), transparent 70%);
+  filter: blur(60px);
+  animation: inkflow-2 34s ease-in-out infinite alternate;
   z-index: 0;
 }
-.VPHero.has-mask::after {
-  display: none;
+@keyframes inkflow {
+  0%   { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  50%  { transform: translate3d(2.5%, -3%, 0) scale(1.06) rotate(1.5deg); }
+  100% { transform: translate3d(-2%, 2.5%, 0) scale(1.03) rotate(-1deg); }
+}
+@keyframes inkflow-2 {
+  to { transform: translate3d(3%, 3%, 0) scale(1.1) rotate(-2deg); }
 }
 
-/* 粒子画布（JS 注入 .hero-particles）：白色点阵浮于照片之上，
-   慢速视差 + 滚动放大渐隐，与照片层同步退场 */
-.hero-particles {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  transform: translate3d(0, calc(var(--hero-y, 0px) * 0.26), 0)
-    scale(calc(1 + var(--hero-p, 0) * 0.16));
-  opacity: calc((1 - var(--hero-p, 0) * 0.5) * 0.9);
-  will-change: transform, opacity;
-  z-index: 1;
-  pointer-events: none;
-}
-
-/* 内容层：滚动时整体向左滑出并渐隐 */
 .VPHero .container {
   position: relative;
-  z-index: 3;
-  transform: translate3d(calc(var(--hero-p, 0) * -14vw), calc(var(--hero-p, 0) * -4vh), 0);
-  opacity: calc(1 - var(--hero-p, 0) * 1.5);
-  will-change: transform, opacity;
+  z-index: 2;
+  transform: translate3d(0, calc(var(--hero-y, 0px) * -0.06), 0);
+  will-change: transform;
 }
 
-/* 照片上的白字体系（重投影：暗幕之上再托一层，保证清晰） */
+/* 衬线刊名与题句 */
 .VPHero .name,
 .VPHero .text {
   font-family: var(--font-serif);
   font-weight: 700;
   letter-spacing: 0.01em;
-  color: #ffffff;
-  text-shadow: 0 2px 14px rgba(15, 10, 6, 0.8), 0 1px 3px rgba(15, 10, 6, 0.65),
-    0 0 46px rgba(15, 10, 6, 0.45);
+  color: var(--ink);
 }
 .VPHero .name {
   font-size: clamp(2.4rem, 4.6vw, 3.6rem);
 }
 .VPHero .text {
   max-width: 820px;
+  color: var(--ink);
 }
 .VPHero .tagline {
   font-family: var(--font-mono);
   font-size: 14px;
   letter-spacing: 0.04em;
-  color: rgba(255, 248, 238, 0.98);
-  text-shadow: 0 1px 8px rgba(15, 10, 6, 0.85), 0 1px 2px rgba(15, 10, 6, 0.7);
+  color: var(--ink-soft);
 }
 
-/* 按钮：直角、等宽字 —— 红底上白实体 / 白描边（Beckhoff 式红白对） */
+/* 按钮：直角、等宽字 —— 印刷品的克制 */
 .VPButton {
   border-radius: 2px !important;
   transition: background-color 0.25s ease, color 0.25s ease,
     border-color 0.25s ease;
 }
 .VPHero .actions .VPButton.brand {
-  background-color: #fffdf8;
-  border-color: #fffdf8;
-  color: var(--rust-deep);
+  background-color: var(--ink);
+  border-color: var(--ink);
+  color: var(--vp-c-bg);
   font-family: var(--font-mono);
   font-size: 14px;
   letter-spacing: 0.05em;
 }
 .VPHero .actions .VPButton.brand:hover {
-  background-color: #2b241c;
-  border-color: #2b241c;
+  background-color: var(--rust);
+  border-color: var(--rust);
   color: #fff8ec;
 }
 .VPHero .actions .VPButton.alt {
   background: transparent;
-  border: 1.5px solid rgba(255, 253, 248, 0.9);
-  color: #fffdf8;
+  border: 1.5px solid var(--ink);
+  color: var(--ink);
   font-family: var(--font-mono);
   font-size: 14px;
   letter-spacing: 0.05em;
 }
 .VPHero .actions .VPButton.alt:hover {
-  background-color: rgba(255, 253, 248, 0.18);
-  border-color: #fffdf8;
-  color: #fffdf8;
-}
-
-/* 首页顶部导航压在红底上：字转白（仅 y=0 的 .top 态；下滑后导航有纸底，恢复墨色） */
-body:has(.VPHome) .VPNavBar.top:not(.focus) .VPNavBarTitle .title,
-body:has(.VPHome) .VPNavBar.top:not(.focus) .VPNavBarMenuLink {
-  color: rgba(255, 253, 248, 0.95);
-}
-body:has(.VPHome) .VPNavBar.top:not(.focus) .VPNavBarHamburger .container span {
-  --vp-c-text-1: rgba(255, 255, 255, 0.92);
+  background-color: var(--ink);
+  border-color: var(--ink);
+  color: var(--vp-c-bg);
 }
 
 /* ---------- ④ 导航：衬线刊名 ---------- */
@@ -256,6 +219,7 @@ body:has(.VPHome) .VPNavBar.top:not(.focus) .VPNavBarHamburger .container span {
   font-family: var(--font-serif);
 }
 
+/* 代码与图片的软角 */
 .vp-doc img {
   border-radius: 4px;
 }
@@ -263,7 +227,7 @@ body:has(.VPHome) .VPNavBar.top:not(.focus) .VPNavBarHamburger .container span {
   border-radius: 4px;
 }
 
-/* 归档页：等宽元数据感 */
+/* 归档页：等宽元数据感（全局补充，页内 scoped 已含布局） */
 .archive-count,
 .archive-date,
 .archive-year {
@@ -284,10 +248,12 @@ html.has-reveal .archive-group.revealed {
   transform: none;
 }
 
-/* ---------- ⑦ 减弱动效：粒子不动画（JS 侧只画一帧），位移动画全关 ---------- */
+/* ---------- ⑦ 减弱动效：全部动画一刀切 ---------- */
 @media (prefers-reduced-motion: reduce) {
-  .VPHero .container,
-  .hero-particles {
+  .VPHero::before,
+  .VPHero::after,
+  .VPHero .container {
+    animation: none !important;
     transform: none !important;
   }
   html.has-reveal .post-item,
@@ -308,4 +274,19 @@ html.has-reveal .archive-group.revealed {
   .VPPage {
     padding: 16px 20px 56px;
   }
+}
+
+/* ---------- ⑨ 鼠标墨痕画布（JS 注入 .hero-wake） ----------
+   暖纸底上做「手指划过湿墨」：multiply 混合让墨痕只压暗、不抢字，
+   峰值 alpha 刻意压到 0.10，属于触感层而非内容层 */
+.hero-wake {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  mix-blend-mode: multiply;
+  opacity: 0.9;
+  pointer-events: none;
+  z-index: 1;
 }
