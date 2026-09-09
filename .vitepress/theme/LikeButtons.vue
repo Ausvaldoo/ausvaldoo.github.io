@@ -4,7 +4,9 @@ import { useRoute } from 'vitepress'
 
 const route = useRoute()
 const API = 'https://blog-likes.inkpaper8x2.workers.dev'
-const TIMEOUT = 6000 // 超过 6 秒就放弃，按钮照常可点，不拖累页面
+// 请求是滚动到才发、且完全不阻塞页面，所以等久一点没有代价；
+// 国内到 Cloudflare 的连接经常被丢包，十几秒才通是常事，放宽能显著提高数字出现率
+const TIMEOUT = 15000
 
 const likes = ref(null) // null = 还没拿到（此时不显示数字）
 const dislikes = ref(null)
