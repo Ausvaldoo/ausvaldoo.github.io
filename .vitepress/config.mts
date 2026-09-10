@@ -23,7 +23,10 @@ export default defineConfig({
     'drafts/**',
     'README.md',
     // 部署脚本 / 内部说明不对外发布
-    'tools/**'
+    'tools/**',
+    // 交接文档：给 AI 和未来的自己看，不对外发布
+    'AGENTS.md',
+    'CLAUDE.md'
   ],
 
   themeConfig: {
