@@ -31,7 +31,7 @@
 
 | 我想…… | 改这个文件 | 改完怎么验证 |
 |---|---|---|
-| 发一篇新文章 | 在 `posts/` 新建 `YYYY-MM-DD-标题.md` | 首页条目 +1，归档页自动出现 |
+| 发一篇新文章 | 在 `posts/` 新建 `YYYY-MM-DD-英文短slug.md` | 首页条目 +1，归档页自动出现 |
 | 改导航菜单 | `.vitepress/config.mts` → `themeConfig.nav` | 本地 `npm run docs:dev` 看顶部 |
 | 改站名 / 副标题 | `.vitepress/config.mts` → `title` / `description` | 网页标签页标题 |
 | 改关于页 | `about.md` | 打开 /about |
@@ -43,6 +43,18 @@
 | 让某个目录不被发布 | `.vitepress/config.mts` → `srcExclude` 数组 | `dist/` 里搜不到该目录 |
 
 **重要**：`srcDir` 是 `.`，也就是**根目录下任何 `.md` 都会变成网页**。新增任何说明文档（如本文件）都必须同步加进 `srcExclude`，否则会被发到公网上。
+
+### 文章命名约定（2026-09-10 起的硬性规则）
+
+```
+posts/YYYY-MM-DD-english-slug.md
+```
+
+- **文件名必须是纯 ASCII 小写英文短 slug**（2~5 个词，连字符分隔），**不要用中文**。
+- **中文标题写在 frontmatter 的 `title` 里** —— 首页、归档页、浏览器标签显示的都是 `title`，跟文件名无关，所以换成英文 slug 对读者**完全无感**。
+- 原因：中文文件名编码后长达 200+ 字符，复制到微信/知乎/邮件里容易被截断或转义，GitHub Pages 对非 ASCII 路径也更脆弱。
+- 日期前缀保证唯一性，也方便按时间排序。
+- ⚠️ **文件名一旦发布就不要改** —— 改了 URL 就变了，旧链接会 404。要改 slug 得同时考虑跳转。
 
 ---
 
