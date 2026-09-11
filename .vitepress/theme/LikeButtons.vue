@@ -1,3 +1,15 @@
+<!--
+  【已停用 · 2026-09-11】此组件当前未挂载到任何布局，保留代码仅供将来参考。
+
+  原因：后端部署在 Cloudflare Worker 的 *.workers.dev 域名上，该域名在中国大陆
+  DNS 层面即被拦截（实测 nslookup 直接 "No response from server"，同一时刻
+  ausvaldoo.github.io 正常返回 200）。因此点赞数在访客浏览器里永远拿不到，
+  按钮会一直显示不出数字——静默失败比没有这个功能更糟，故整体下线。
+
+  若要恢复：backend 必须换到一个国内可达的地址（自有域名 CNAME 到 Worker，
+  或改用国内可访问的服务），然后把 API 常量改成新地址，并在 MyLayout.vue 中重新挂载。
+  后端代码仍在 tools/like-worker/worker.js，KV namespace id 见 tools/like-worker/wrangler.toml。
+-->
 <script setup>
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vitepress'

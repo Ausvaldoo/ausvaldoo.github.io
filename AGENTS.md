@@ -21,7 +21,10 @@
 |---|---|---|---|
 | **内容层** | `posts/*.md`、`about.md`、`index.md` | 站长的文章与文案 | ❌ 不能删，这是全部资产。**是纯文本，脱离任何工具都能读** |
 | **配置层** | `.vitepress/config.mts` | 导航、站名、搜索、排除目录、`<head>` | ⚠️ 改错最坏是导航乱掉，能改回来 |
-| **装饰层** | `.vitepress/theme/`（5 个文件） | 动效、阅读量、点赞按钮 | ✅ **整个删掉博客照常运行**，只少这些花样 |
+| **装饰层** | `.vitepress/theme/` | 动效、阅读量、配色 | ✅ **整个删掉博客照常运行**，只少这些花样 |
+
+装饰层当前实际生效的只有 4 个文件：`MyLayout.vue`（挂载点）、`ViewCount.vue`（阅读量）、`custom.css`（全部样式）、`index.mjs`。
+`LikeButtons.vue` **处于停用状态**（原因见第 6 节），保留只是因为删掉没有额外收益。
 
 **给 AI 的约束**：除非站长明确要求，不要为了"更好看"增加装饰层代码。装饰越多，维护成本越高，而这个站长看不懂前端。
 
@@ -37,9 +40,9 @@
 | 改关于页 | `about.md` | 打开 /about |
 | 改首页排版 | `index.md` + `.vitepress/theme/custom.css` | 首页 |
 | 改配色 / 字体 / 动效 | `.vitepress/theme/custom.css` | 全站 |
+| **改文章分类 / 标签** | 每篇文章 frontmatter 的 `categories` / `tags` | 见下方「分类与标签」 |
 | 去掉阅读量 | 删 `MyLayout.vue` 里的 `<ViewCount />` 那一行 | 文章页顶部那行消失 |
-| 去掉点赞按钮 | 删 `MyLayout.vue` 里的 `<LikeButtons />` 那一行 | 文章页底部那行消失 |
-| 恢复成最朴素的博客 | 把 `Layout: MyLayout` 改回默认，删掉 `theme/` 下 3 个 `.vue` | 只剩原生 VitePress |
+| 恢复成最朴素的博客 | 把 `Layout: MyLayout` 改回默认，删掉 `theme/` 下的 `.vue` | 只剩原生 VitePress |
 | 让某个目录不被发布 | `.vitepress/config.mts` → `srcExclude` 数组 | `dist/` 里搜不到该目录 |
 
 **重要**：`srcDir` 是 `.`，也就是**根目录下任何 `.md` 都会变成网页**。新增任何说明文档（如本文件）都必须同步加进 `srcExclude`，否则会被发到公网上。
@@ -55,6 +58,15 @@ posts/YYYY-MM-DD-english-slug.md
 - 原因：中文文件名编码后长达 200+ 字符，复制到微信/知乎/邮件里容易被截断或转义，GitHub Pages 对非 ASCII 路径也更脆弱。
 - 日期前缀保证唯一性，也方便按时间排序。
 - ⚠️ **文件名一旦发布就不要改** —— 改了 URL 就变了，旧链接会 404。要改 slug 得同时考虑跳转。
+
+### 分类与标签（2026-09 引入，尚未整理完）
+
+- **首页卡片上显示的那个词，是 `categories`，不是 `tags`** —— 见 `index.md` 里的 `{{ post.category }}`。
+  ⚠️ 所以「改标签」不会改变首页观感，要改观感必须改 `categories`。
+- 归档页（`/posts`）显示的是 `categories`，`posts.data.js` 负责汇总。
+- `posts.data.js` 用 `posts/*.md` 通配，因此**必须排除 `posts/index.md` 自身**，否则归档页会把自己算成一篇、数量虚增 1。
+- 现状（2026-09-11 统计）：35 篇中 **33 篇 `categories` = `知乎存档`**，tags 也有 32 篇只有 `知乎`。
+  这是**历史遗留**（全部源自知乎迁移），不是 bug，但对读者毫无信息量 —— 待站长确认后按主题重分类。
 
 ---
 
@@ -81,9 +93,10 @@ git push origin main
 站长建这个博客的原因之一，是他在知乎的文章被删除过。**因此：**
 
 1. 这是**公开仓库**，写进去的一切都会公开。不要提交 API key、token、密码、真实身份信息。
-2. **不引入任何需要实名的国内服务**（腾讯云、阿里云等）。计数目前用 Cloudflare Worker，只存每页两个整数，不收 IP、不收身份。
+2. **不引入任何需要实名的国内服务**（腾讯云、阿里云等）。阅读量目前用「不蒜子」，它只返回一个整数，不收 IP、不收身份。
 3. 不上**评论功能** —— 访客产生的内容会带来不可控的责任。
 4. `tools/` 已在 `srcExclude`，不会被发布。新增内部脚本/文档同样要加进去。
+5. ⚠️ **`.gitignore` 里有 `/Pasted image *.png`** —— Obsidian 粘贴图片会落在仓库根目录且常无引用，不要顺手 `git add -A` 提交上去。
 
 ---
 
@@ -92,9 +105,24 @@ git push origin main
 | 现象 | 原因 |
 |---|---|
 | 首页卡片显示正文开头，不是 frontmatter 的 `description` | `posts.data.js` 是**正文优先**（正文比描述长就用正文）。这是当初为修「首页摘要空白」专门改的 |
-| 文章底部点赞数字加载慢，或不显示 | 国内到 Cloudflare 的 TCP 链路丢包，**网络问题不是代码问题**。已做懒加载 + 15 秒超时，失败就静默隐藏，不影响页面 |
+| **点赞/点踩按钮已下线，文章底部没有它** | 见下方「点赞功能为什么下线」 |
+| 首页卡片上的分类词几乎全是「知乎存档」 | `categories` 只在迁移时按来源打标，从未按主题区分。见第 3 节「分类与标签」 |
 | `node_modules` 里 `.vitepress/config.mts.timestamp-*.mjs` 一堆 | Vite 的临时文件，已被 gitignore，不用管 |
 | 阅读量需要点进文章才涨 | 不蒜子按 URL 统计，SPA 路由切换时脚本会重新注入 |
+| 刚部署完访问新文章 404，过几分钟又好了 | **404 响应被 GitHub Pages 的 CDN 和浏览器缓存了**。这是部署窗口期的正常现象，不是文章没发出去。临时绕过：URL 后面加 `?v=2` |
+
+### 点赞功能为什么下线（2026-09-11）
+
+**结论：废弃，不要试图重新挂载，除非后端换了地址。**
+
+- 后端是 Cloudflare Worker，地址 `https://blog-likes.inkpaper8x2.workers.dev`，代码在 `tools/like-worker/`。
+- 实测：在这台机器上 `nslookup blog-likes.inkpaper8x2.workers.dev` 直接 **"No response from server"**，
+  同一时刻 `ausvaldoo.github.io` 正常返回 **HTTP 200**。
+  → **`*.workers.dev` 域名在国内被 DNS 层拦截**，不是丢包、不是超时、不是代码问题，改超时时间没用。
+- 表现：按钮能点，但数字永远拿不到，且组件是静默失败 —— 读者只看到一个坏掉的按钮。
+  **静默失败比没有这个功能更糟**，所以整体摘掉（`MyLayout.vue` 不再挂载、`config.mts` 里的 `preconnect` 已删、`custom.css` 的样式已删）。
+- 重启条件：后端必须换到**国内可达的地址**（自有域名 CNAME 到 Worker，或换国内可访问的服务），
+  然后改 `LikeButtons.vue` 里的 `API` 常量并在 `MyLayout.vue` 重新挂载。
 
 ---
 
@@ -102,8 +130,13 @@ git push origin main
 
 - **没有可用代理**。`ProxyEnable=0`，git 全局代理已于 2026-09-10 清除。
 - `github.com:443` **不通**；`ssh.github.com:443` **通**。
-- Cloudflare 及境外 HTTPS 经常被丢包（实测 curl 到 Worker：DNS 9ms 正常，TCP 21 秒黑洞）。
+- `*.workers.dev` **不通**（DNS 被拦）。普通境外 HTTPS 也经常被丢包。
 - **沙箱环境（如 WorkBuddy）通常也无法访问外网**，验证"某个外网地址通不通"要请站长在自己机器上跑。
+  可用的诊断命令（注意 PowerShell 里 `curl` 是 `Invoke-WebRequest` 的别名，**必须写 `curl.exe`**）：
+  ```powershell
+  nslookup <域名>
+  curl.exe -s -o NUL -w "http=%{http_code} dns=%{time_namelookup}s conn=%{time_connect}s total=%{time_total}s`n" --max-time 10 "<url>"
+  ```
 
 ---
 
@@ -113,3 +146,4 @@ git push origin main
 2. **每次改动单独提交**，提交信息写清楚改了什么、为什么 —— `git log` 就是变更档案。
 3. **不要只交付"做完了"**，要交付"你怎么验证它对、改坏了怎么回退"。
 4. 遇到不确定，**问**，不要猜。站长明确说过：宁可被问，不要自作主张改设计。
+5. ⚠️ **不要并行编辑同一个文件** —— 两个编辑同时读同一份内容再各自写回，后写的会覆盖先写的（本站 2026-09-11 实际踩到过）。

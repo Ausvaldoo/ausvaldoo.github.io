@@ -87,8 +87,6 @@ export default defineConfig({
     ['meta', { name: 'author', content: '牧神' }],
     ['link', { rel: 'icon', type: 'image/jpeg', href: '/zhihu_avatar.jpg' }],
     // 提前和计数 Worker 握手（DNS + TCP + TLS），否则滚到文末才发请求会明显卡顿
-    ['link', { rel: 'dns-prefetch', href: 'https://blog-likes.inkpaper8x2.workers.dev' }],
-    ['link', { rel: 'preconnect', href: 'https://blog-likes.inkpaper8x2.workers.dev', crossorigin: '' }],
     // 衬线字体（Google Fonts 国内镜像），Playfair 用于西文刊名、Noto Serif SC 用于中文标题
     ['link', { rel: 'preconnect', href: 'https://fonts.loli.net' }],
     ['link', { rel: 'preconnect', href: 'https://gstatic.loli.net', crossorigin: '' }],
