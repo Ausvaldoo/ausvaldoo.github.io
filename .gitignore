@@ -10,6 +10,10 @@ dist/
 .obsidian/
 .trash/
 
+# Obsidian 粘贴到仓库根目录的孤儿图片：默认不入库。
+# 要正式用图，请把文件放进 public/images/ 再用 ![](/images/xxx.png) 引用。
+/Pasted image *.png
+
 # 系统杂项
 Thumbs.db
 .DS_Store

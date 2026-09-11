@@ -44,6 +44,9 @@ export default createContentLoader('posts/*.md', {
   render: true,
   transform(raw) {
     return raw
+      // 归档页 posts/index.md 本身也会被 glob 命中，必须排除，
+      // 否则它会把自己当成一篇文章列进列表，且「共 N 篇」多算一条
+      .filter(({ url }) => !/^\/posts\/?$/.test(url))
       .map(({ url, frontmatter, html }) => {
         // 正文优先（长，能触发卡片折叠+悬停展开）；description 兜底
         // （作者手写摘要，同时仍被 VitePress 用于 <meta>/og 描述）。
