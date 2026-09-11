@@ -38,6 +38,19 @@ function fmtDate(d) {
   return String(d).slice(0, 10)
 }
 
+// 把「分类 / 标签」统一成字符串数组。三处要兼容，因为历史上三种写法都用过：
+//   categories: 权力与制度              （单值字符串）
+//   categories: [宪法, 言论自由]         （内联数组）
+//   categories:                          （多行列表）
+//     - 宪法与法治
+//     - 权力与制度
+// 这样以后无论作者手写哪种写法都不会崩、也不会渲染出 "[宪法" 这种脏数据。
+function toList(v) {
+  if (v == null || v === '') return []
+  const arr = Array.isArray(v) ? v : String(v).split(/[,，]/)
+  return arr.map((s) => String(s).trim().replace(/^\[|\]$/g, '').trim()).filter(Boolean)
+}
+
 const MAX = 700 // 摘要上限：约 8~9 行，折叠 3 行时悬停有足够内容可展开
 
 export default createContentLoader('posts/*.md', {
@@ -59,8 +72,10 @@ export default createContentLoader('posts/*.md', {
           url,
           title: frontmatter.title || '',
           date: fmtDate(frontmatter.date),
-          category: frontmatter.categories || '',
-          tags: frontmatter.tags || [],
+          // category: 单值 —— 分类是一篇的归属，只能有一个。
+          // tags:     多值 —— 提供多个浏览入口（标签页）。
+          category: toList(frontmatter.categories)[0] || '',
+          tags: toList(frontmatter.tags),
           excerpt: text.length > MAX ? text.slice(0, MAX) + '…' : text
         }
       })

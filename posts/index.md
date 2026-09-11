@@ -25,7 +25,7 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
     <li v-for="post in groups[year]" :key="post.url" class="archive-item">
       <span class="archive-date">{{ String(post.date).slice(5) }}</span>
       <a class="archive-title" :href="post.url">{{ post.title }}</a>
-      <span v-if="post.category" class="archive-cat">{{ post.category }}</span>
+      <a v-if="post.category" class="archive-cat" :href="`/tags#cat-${post.category}`">{{ post.category }}</a>
     </li>
   </ul>
 </div>
@@ -98,6 +98,11 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
   flex: none;
   font-size: 12px;
   color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+.archive-cat:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 @media (max-width: 640px) {
   .archive-item {

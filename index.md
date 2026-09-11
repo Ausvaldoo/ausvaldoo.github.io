@@ -34,7 +34,7 @@ const lastRowStart = Math.floor((posts.length - 1) / COLS) * COLS
       <p v-if="post.excerpt" class="post-excerpt">{{ post.excerpt }}</p>
       <div class="post-meta">
         <span class="post-date">{{ post.date }}</span>
-        <span v-if="post.category" class="post-cat">{{ post.category }}</span>
+        <a v-if="post.category" class="post-cat" :href="`/tags#cat-${post.category}`">{{ post.category }}</a>
       </div>
     </div>
   </li>
@@ -136,14 +136,22 @@ const lastRowStart = Math.floor((posts.length - 1) / COLS) * COLS
 
 .post-meta {
   display: flex;
-  gap: 14px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 14px;
   font-family: var(--font-mono);
   font-size: 11.5px;
   letter-spacing: 0.05em;
   color: var(--vp-c-text-3);
 }
+/* 分类可点，跳到标签页的对应锚点；标签不在这里铺开，避免每张卡片都糊成一排 */
 .post-cat {
   color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+.post-cat:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* 窄屏回到单列：两列会把每行压到 20 字以内，反而更难读 */

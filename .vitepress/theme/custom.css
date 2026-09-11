@@ -472,7 +472,48 @@ html {
   display: none;
 }
 
-/* ---------- ⑱ 减弱动效兜底：新增动效一并关闭 ---------- */
+/* ---------- ⑱ 文章底部：归属分类 + 标签 ---------- */
+/* 分类是一篇的归属（只有一个），标签是浏览入口（可以多个）。
+   两者都做成链接，点进「分类与标签」页。风格刻意保持"一行等宽小字"，
+   跟文章顶部的阅读量、首页卡片的元数据同一套语言，不引入新装饰。 */
+.post-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin-top: 44px;
+  padding-top: 18px;
+  border-top: 1px solid var(--vp-c-divider);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  line-height: 1.9;
+}
+.pt-cat,
+.pt-tag {
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+.pt-cat {
+  color: var(--vp-c-brand-1);
+}
+.pt-tag {
+  color: var(--ink-soft);
+}
+.pt-cat:hover,
+.pt-tag:hover {
+  color: var(--rust);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* 词与词之间用细点分隔，比留空隙更像"一行元数据" */
+.pt-tag + .pt-tag::before,
+.pt-cat + .pt-tag::before {
+  content: '·';
+  margin: 0 8px;
+  color: var(--vp-c-text-3);
+}
+
+/* ---------- ⑲ 减弱动效兜底：新增动效一并关闭 ---------- */
 @media (prefers-reduced-motion: reduce) {
   .scroll-progress,
   .to-top {
