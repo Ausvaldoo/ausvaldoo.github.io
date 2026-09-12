@@ -139,6 +139,25 @@ git push origin main
 - 部署要 1~2 分钟。想确认上线，别信"推送成功"，直接探测线上：
   `curl.exe -s -o /dev/null -w "%{http_code}" https://ausvaldoo.github.io/posts/<slug>`（`gh` 命令本机没装）。
 
+### 4.0 本地看效果时的一个坑（2026-09-13 踩到）
+
+`npx vitepress preview` 是**静态服务、启动时就把文件列表索引好了**。所以：
+
+> **重建之后必须重启 `vitepress preview`，否则你看到的是旧页面。**
+
+现象很有迷惑性：构建后 CSS 的文件名哈希变了，服务仍吐旧索引 → 主样式表整个 404 →
+页面排版全乱，而且 `getComputedStyle(...).getPropertyValue('--paper')` 一律返回**空串**。
+看起来像「主题变量写错了」，其实是服务没重启。
+
+判据（一眼分辨）：在 DevTools 里看 `document.styleSheets`，正常情况下应该有 3 条
+（`assets/style.<hash>.css`、`vp-icons.css`、Google Fonts）；如果只剩后两条，
+就是主 CSS 没加载，**不是代码问题**。
+
+顺带一条写验证脚本的纪律：**读 CSS 变量读不到就报错，不要兜底默认值**。
+本轮就因为脚本里写了 `float(x or 1)`，把「暗色系数没生效」静默显示成「系数 1.0」，
+白查了一轮。
+
+
 ### 4.1 从知乎同步新文章（2026-09-12 跑通）
 
 站长会先在知乎发文，之后再让 AI 同步到博客。**不要试图直接抓网页** —— 知乎对本站
@@ -199,6 +218,8 @@ cd /e/04_Tools/zhihu-spider && ./1_crawl.bat     # 等价：python crawl_article
 | `/tags` 页面很长，把全站文章列了两遍 | 分类一遍（按归属）、标签一遍（按角度），是索引页的正常形态，不是重复内容出错 |
 | `node_modules` 里 `.vitepress/config.mts.timestamp-*.mjs` 一堆 | Vite 的临时文件，已被 gitignore，不用管 |
 | 阅读量需要点进文章才涨 | 不蒜子按 URL 统计，SPA 路由切换时脚本会重新注入 |
+| **只有文章页有「阅读 N 次」，标签页/关于页/归档页都没有** | 2026-09-13 起是设计如此。给索引页挂 PV 数字会被读成「这篇文章被读了 N 次」，没有意义。判定用 `/^\/posts\/.+/` —— 注意必须排除 `/posts/` 本身（那是归档页 `posts/index.md`） |
+| **本地开发（`localhost` / `127.0.0.1`）打开文章也看不到阅读次数** | **故意的，不是坏了。** 不蒜子按 Referer 归户，而 Referer 里只有主机名，所以 `localhost` 是全世界所有本机开发者共用的一个桶。实测：`Referer=http://127.0.0.1:4173/about` 返回 page_pv=8211、`localhost:5173/` 返回 34579507，而线上 `ausvaldoo.github.io/about` 只有 12。本地看到的数字全是别人刷的，而且自己刷新还在往公共桶里灌水，所以本地直接不显示也不加载 |
 | 刚部署完访问新文章 404，过几分钟又好了 | **404 响应被 GitHub Pages 的 CDN 和浏览器缓存了**。这是部署窗口期的正常现象，不是文章没发出去。临时绕过：URL 后面加 `?v=2` |
 
 ### 点赞功能为什么下线（2026-09-11）

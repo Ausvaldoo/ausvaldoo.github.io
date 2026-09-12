@@ -1,9 +1,13 @@
 # 依赖与构建产物
 node_modules/
 dist/
+# 旧构建目录。构建前会把 dist 改名让开（某些受限环境里没法直接清空 dist），
+# 留下的是 dist_old_<时间戳>。发布命令是 `git add -A`，不挡一下会被整包提交。
+dist_old_*/
 
 # VitePress 缓存与数据加载器临时文件
 .vitepress/cache/
+.vitepress/.temp/
 *.timestamp-*.mjs
 
 # Obsidian 工作区（配置含本机路径，且 workspace.json 变动频繁）

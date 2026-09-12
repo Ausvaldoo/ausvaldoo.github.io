@@ -12,9 +12,28 @@
   --ink: #0a0a0b;
   --ink-soft: #55524b;
   --ink-faint: #969188;
+  /* Hero 粒子场：一组「纸上的颜料点」，逗号分隔，index.mjs 逐颗随机取色。
+     来由：原先粒子借 --ink，而 hero 标题也是 --ink，浅色模式下黑点围着黑字，
+     读者反馈「黑色不就和文字打架了吗」；改成中性灰之后又被否 ——
+     「非得不是黑就是白就是灰这种？」所以这里是**彩色**的。
+
+     选色不是随手挑彩虹，是从这个站自己的颜料里配的：
+       赭石 #b0552f / 藤黄 #c9931f / 石绿 #4f7a4a   —— 与 hero 底下那三团墨彩
+       （rgba(168,68,42) 赭红、rgba(191,146,58) 赭金、rgba(107,112,82) 苔绿）同源，
+       粒子飘在同一片晕染里，颜色是接得上的；
+       花青 #2f6187 / 胭脂 #a63e6b   —— 补上冷端与紫红端，五色才真的「缤纷」，
+       否则只有一片暖黄，反而比灰色更闷。
+     五色都是低饱和的中国画颜料色系，铺在米白纸上会化开成水彩点，
+     不是荧光糖果色 —— 这是「电子杂志 × 电子墨水」这个底子能承受的上限。
+
+     不打架的保证：这些颜色在 alpha 0.34~0.68 下与纸底合成后，
+     与正文 --ink 的对比度仍有 6.6:1 以上（实测见 _blog-probe/verify_v3.py），
+     与纸底只有约 2~2.6:1 —— 是底纹，不是第二层文字。 */
+  --hero-dots: #b0552f, #c9931f, #4f7a4a, #2f6187, #a63e6b;
+  /* 粒子 alpha 的全局系数。浅色 = 1（基准）；暗色必须调低，原因见 .dark。 */
+  --hero-dot-alpha: 1;
   --rust: #a8442a;
   --rust-deep: #8c3721;
-  --nav-glass: rgba(241, 239, 234, 0.8);
 
   --font-serif: 'Playfair Display', 'Noto Serif SC', 'Source Han Serif SC',
     'STZhongsong', 'SimSun', serif;
@@ -50,9 +69,21 @@
   --ink: #e8e6e0;
   --ink-soft: #a8a49b;
   --ink-faint: #6e6b64;
+  /* 暗底的粒子：同一套五色，但整体提亮 —— 暗底上低饱和的深颜料会直接糊没，
+     必须给「被灯照到」的版本。仍然是低饱和，别调成霓虹。
+     与纸底 #161616 合成后约 2~2.6:1、与正文 --ink 6:1 以上，与浅色同构。 */
+  --hero-dots: #d97a4a, #e0b356, #8fbd7e, #7aa7d4, #d98ab0;
+  /* ⚠️ 暗色的 alpha 必须比浅色低，这不是口味问题，是物理：
+     浅色模式下颜料是叠在一张 L=0.86 的米白纸上的，合成的结果被纸**冲淡**，
+     对比度天然低；暗色模式下底是 #161616（L=0.008，几乎是 0），
+     没有纸来冲，合成色基本就是颜料自己的亮度 —— 同一组 alpha，暗色会明显更抢。
+     2026-09-13 实测：alpha 系数 1 时，浅色粒子对纸底最亮 2.93:1、暗色 4.65:1，
+     暗色抢眼 60%，来回切主题一眼就能看出两套观感。
+     取 0.78 后暗色落回 2.3~3.0:1，与浅色同一档；同时与正文的对比度从 3.12:1
+     回到 4.8:1，跟文字也分得更开。 */
+  --hero-dot-alpha: 0.78;
   --rust: #cf6b4a;
   --rust-deep: #e08560;
-  --nav-glass: rgba(22, 22, 22, 0.8);
   --vp-c-divider: #2e2e30;
   --vp-c-border: #3a3a3c;
   --vp-c-brand-soft: rgba(207, 107, 74, 0.16);
@@ -278,17 +309,27 @@ html.has-reveal .archive-group.revealed {
   }
 }
 
-/* ---------- ⑨ 鼠标墨痕画布（JS 注入 .hero-wake） ----------
-   米白纸上做「手指划过湿墨」：multiply 混合让墨痕只压暗、不抢字，
-   峰值 alpha 刻意压到 0.10，属于触感层而非内容层 */
-.hero-wake {
+/* ---------- ⑨ Hero 粒子场（JS 注入 .hero-field）----------
+   来源：hakim.se「Particles」（2011，他的第一个 canvas 作品）。
+   2026-09-12 替换掉原来那层「鼠标墨痕」—— 原效果峰值 alpha 只有 0.10，
+   是设计上就看不见的触感层，属于「技术正确但读者永远注意不到」。
+   粒子本身的颜色与 alpha 都写在 index.mjs 里（颜色取 --hero-dots 这组调色板），
+   这里只负责铺满 hero。
+
+   层级：墨彩底(--before/--after, z:0) < 粒子(z:1) < 文字(.container, z:2)，
+   所以粒子永远在文字**下面**，不会糊到字上。
+
+   ⚠️ 这里**不要**再加 mix-blend-mode。
+   09-12 那版用 multiply 是想让粒子「渗进纸」，但它会跟底下的墨彩晕染相乘，
+   点的实际颜色随位置漂移，明度不可控；现在颜色已经由 --hero-dots 定死，
+   普通 alpha 叠加反而更可预测、也更好实测（见 09-13 的对比度实测）。
+   彩色点尤其禁不起 multiply：和墨彩一乘，五色会互相串成脏棕。 */
+.hero-field {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
-  mix-blend-mode: multiply;
-  opacity: 0.9;
   pointer-events: none;
   z-index: 1;
 }
@@ -307,17 +348,26 @@ html.has-reveal .archive-group.revealed {
   transform: scaleX(0);
 }
 
-/* ---------- ⑪ 导航栏滚动态：毛玻璃 + 细分隔线 ---------- */
-.VPNav {
-  transition: box-shadow 0.3s ease;
+/* ---------- ⑪ 导航栏滚动态：细分隔线（不用毛玻璃）----------
+   背景保持不透明纸色，滚动态只加一条细分隔线。
+
+   ⚠️ 不要在 .VPNavBar 上加 backdrop-filter / 半透明底色 —— 试过，是无效功：
+   VitePress 在 `@media (min-width: 960px)` 有一条
+     .VPNavBar:not(.has-sidebar):not(.home.top) { background-color: var(--vp-nav-bg-color) }
+   权重是 (0,4,0) —— `:not()` 取参数里的最高权重，`.home.top` 算两个类。
+   而组件样式是运行时注入、排在 custom.css 之后，所以它会赢，用不透明的
+   --vp-nav-bg-color 把底色盖掉 —— 结果就是 backdrop-filter 照常生效却完全看不见。
+   加元素名硬拼权重更没用（class 数先比，4 > 3）。真要半透明，只能去覆盖
+   --vp-nav-bg-color 变量本身（自定义属性按继承取值，不参与权重竞赛）——
+   但半透明会削弱正文的可读性，用户已明确否掉，别再往回加。
+
+   另：`.VPNav` 只在 ≥960px 才是 position: fixed；窄屏是 relative，整条导航随页面滚走，
+   窄屏下压根不存在「滚动态」。这是 VitePress 的移动端设计，不要改。 */
+.VPNavBar {
+  transition: border-color 0.3s ease;
 }
-.VPNav.is-scrolled .VPNavBar {
-  background: var(--nav-glass);
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
-  border-bottom: 1px solid var(--vp-c-divider);
-}
-.VPNav.is-scrolled .VPNavBar.has-sidebar {
+html .VPNav.is-scrolled .VPNavBar,
+html .VPNav.is-scrolled .VPNavBar.has-sidebar {
   border-bottom: 1px solid var(--vp-c-divider);
 }
 
@@ -541,5 +591,170 @@ html {
   .vp-doc img:hover {
     transition: none;
     transform: none;
+  }
+}
+
+/* ---------- ⑳ 已删除：引用块竖线画入 / 表格逐行显入 / 首字下沉 ----------
+   这三个效果做过又撤掉了（2026-09-12 用户实测后否决），原因值得记下来，
+   免得以后再犯：
+
+   1) 引用块竖线画入：动画是 3px 宽的线在 0.6s 内画下，本来就极难察觉；
+      更糟的是它有真实副作用 —— 未显入的 blockquote 处于
+      「border-left-color: transparent + 竖线 scaleY(0)」，
+      也就是**红线完全不显示**。快速滚动时读者看到的是「没有红线的引文」，
+      比不做动效更差。
+   2) 表格逐行错峰显入：全站只有 1 篇带表格，而且是 5 张 3~4 行的小表
+      （实测 tableCount=5），整张表同时进入视口，总时长约 0.5s，等于看不见。
+   3) 首字下沉：纯装饰，不帮助理解；且只能覆盖 29/39 篇（10 篇因首段以年份或
+      引号开头而自动跳过），**同一站内时有时无，这种不一致本身就是设计缺陷**。
+
+   教训：动效必须同时满足「可感知」「有用途」「全站一致」，
+   只满足「技术上能跑通」是不够的。判断可感知性要用像素/时长去量，不能靠猜。 */
+
+/* ---------- ㉑ SPA 切页过渡（View Transitions API）----------
+   由 index.mjs 的 setupViewTransitions 驱动，不支持的浏览器完全不介入。
+   给导航条一个独立的名字 → 它从根快照里被单独摘出来，切页时不跟着交叉淡入，
+   观感是「纸换了、刊头没动」。名字一旦重复，浏览器会跳过整段过渡，所以
+   index.mjs 里每次导航结束都会撤掉 vt-title。 */
+html .VPNav {
+  view-transition-name: vp-navbar;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.24s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+::view-transition-group(vt-title) {
+  animation-duration: 0.42s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 方向感位移（Kontext 思路，2026-09-12；09-13 改语义判定）——
+   方向类 vt-fwd / vt-back 由 index.mjs 写在 <html> 上。
+   ⚠️ 判据是**内容**不是 URL 层级：目标是文章 → fwd，从文章出去 → back，
+   其余（栏目之间横跳）→ 无类。09-12 那版按「路径有几层」判断，结果
+   「首页 → 标签页」被判成前进、「归档页 → 标签页」不算，同一个标签页
+   从不同入口进表现不一样，读者反馈「有时看得到有时看不到」。
+   别再往回改成按层级判断了，理由写在 index.mjs 的 dirTo() 上面。
+     fwd  = 进文章：旧页向左退，新页从右进
+     back = 出文章：反向
+     无类 = 退回上面那条交叉淡入，不位移
+   导航条有独立的 view-transition-name，所以不在 root 快照里 ——
+   观感是「内容整片平移，刊头不动」，这正是不照搬 iOS 全屏滑动的原因。
+   ⚠️ 位移量刻意做到 6%~8%：2%~3% 是察觉不到的（本站 2026-09-12 的教训）。 */
+html.vt-fwd::view-transition-old(root) {
+  animation: vt-out-left 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+html.vt-fwd::view-transition-new(root) {
+  animation: vt-in-right 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+html.vt-back::view-transition-old(root) {
+  animation: vt-out-right 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+html.vt-back::view-transition-new(root) {
+  animation: vt-in-left 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes vt-out-left {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-6%);
+    opacity: 0;
+  }
+}
+@keyframes vt-in-right {
+  from {
+    transform: translateX(8%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes vt-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(6%);
+    opacity: 0;
+  }
+}
+@keyframes vt-in-left {
+  from {
+    transform: translateX(-8%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* ---------- ㉒ 搜索框景深（Avgrund 思路，hakim，2026-09-12）----------
+   打开搜索时整页后退（缩小 + 轻微虚化），弹层浮在最前面 —— 层次感来自
+   页面本身在动，而不是靠把背景盖得更黑。
+
+   实现是**纯 CSS 的 :has()**，不写 JS：没有需要维护的开关状态，
+   弹层一移除样式立刻复原，不存在「关掉后忘了还原」的 bug。
+   不支持 :has() 的浏览器只是看不到这个效果，搜索功能完全不受影响。
+
+   ⚠️ 只对搜索框生效，**移动端菜单没有做**：实测 .VPNavScreen 是 fixed 且挂在
+   #app 内部，缩放 #app 会把菜单自己一起缩掉；而且它是整屏不透明面板，
+   背后没有东西可露 —— 硬做只会得到「菜单变小了」这个 bug，不是景深。 */
+#app {
+  transform-origin: 50% 50%;
+  transition:
+    transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    filter 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+body:has(> .VPLocalSearchBox) #app {
+  transform: scale(0.92);
+  filter: blur(2px);
+}
+/* 罩子略微调浅并把纯黑换成墨色：原值 rgba(0,0,0,0.6) 会把后退的纸压成一片灰，
+   景深反而看不出来。Avgrund 原版也是 0.5 而不是 0.6。
+
+   ⚠️ 必须走**自定义属性**，不能直接写 `.VPLocalSearchBox .backdrop { background: ... }`：
+   组件样式是运行时注入的，排在我们后面，实测过两次都一样 ——
+   `.backdrop[data-v-xxx]` 与 `.VPLocalSearchBox .backdrop` 权重都是 (0,2,0)，
+   平手时后者（组件）胜出，改写无效（2026-09-12 实测 backdropBg 仍是 rgba(0,0,0,0.6)）。
+   自定义属性按继承取值、不参与权重竞赛，是唯一可靠的覆盖手段。 */
+body:has(> .VPLocalSearchBox) {
+  --vp-backdrop-bg-color: rgba(10, 10, 11, 0.52);
+}
+@media (prefers-reduced-motion: reduce) {
+  #app {
+    transition: none;
+  }
+  body:has(> .VPLocalSearchBox) #app {
+    transform: none;
+    filter: none;
+  }
+}
+
+/* ---------- ㉓ 正文选区聚光（Fokus 思路，hakim，2026-09-12）----------
+   由 index.mjs 的 setupSelectionSpotlight 注入 <canvas class="selection-spotlight">。
+   遮罩颜色、羽化、淡入淡出全画在 canvas 里，这里只管它怎么贴在全站之上。
+   ⚠️ pointer-events: none 是硬性要求 —— 少了它，canvas 会吃掉鼠标，
+      文字就没法拖选了，这个效果就成了「只能看不能用」的坏件。
+   z-index 取 2147483646（比 int 上限小 1），压在导航条与页脚之上；
+      留 1 而不取满，是为了将来真有东西需要盖在它上面时还有余地。 */
+.selection-spotlight {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  pointer-events: none;
+  display: block;
+}
+
+@media print {
+  .selection-spotlight {
+    display: none;
   }
 }
