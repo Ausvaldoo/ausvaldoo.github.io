@@ -526,6 +526,13 @@ html {
 /* 分类是一篇的归属（只有一个），标签是浏览入口（可以多个）。
    两者都做成链接，点进「分类与标签」页。风格刻意保持"一行等宽小字"，
    跟文章顶部的阅读量、首页卡片的元数据同一套语言，不引入新装饰。 */
+/* 系列上下篇（SeriesPager）自己已经带了一道上分割线，紧跟其后的分类/标签行
+   不必再来一道 —— 否则两条细线夹着中间那块内容，显得密。 */
+.series-pager + .post-tags {
+  margin-top: 22px;
+  padding-top: 0;
+  border-top: none;
+}
 .post-tags {
   display: flex;
   flex-wrap: wrap;

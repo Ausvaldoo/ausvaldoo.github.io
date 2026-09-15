@@ -3,6 +3,8 @@ import DefaultTheme from 'vitepress/theme'
 import { useData } from 'vitepress'
 import { computed } from 'vue'
 import ViewCount from './ViewCount.vue'
+import SeriesNav from './SeriesNav.vue'
+import SeriesPager from './SeriesPager.vue'
 
 const { Layout } = DefaultTheme
 const { frontmatter } = useData()
@@ -19,13 +21,17 @@ const tags = computed(() =>
 
 <template>
   <Layout>
-    <!-- 文章正文上方：一行克制的等宽元数据，跟首页 kicker 同一套语言 -->
+    <!-- 文章正文上方：系列条在阅读次数之上 —— 它决定「你要按第几篇往下读」，
+         是导航性信息，优先级高于统计数字。没有声明 series 的文章不渲染。 -->
     <template #doc-before>
+      <SeriesNav />
       <ViewCount />
     </template>
 
-    <!-- 正文之后：这篇的归属分类与标签，可点进索引页 -->
+    <!-- 正文之后：先给系列内的上一篇/下一篇（读者刚读完，最可能继续往下读），
+         再给分类与标签这些「元数据」。 -->
     <template #doc-after>
+      <SeriesPager />
       <div v-if="category || tags.length" class="post-tags">
         <a v-if="category" class="pt-cat" :href="`/tags#cat-${category}`">{{ category }}</a>
         <a v-for="t in tags" :key="t" class="pt-tag" :href="`/tags#tag-${t}`">{{ t }}</a>
