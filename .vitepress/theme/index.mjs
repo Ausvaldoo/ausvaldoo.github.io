@@ -86,14 +86,20 @@ function setupReveal() {
 
   const handle = () => {
     scheduled = false
+    // ⚠️ 2026-09-18 修：先加 has-reveal（内容藏起来），**再等一帧**才揭示视口内元素。
+    // 原版把「隐藏」和「揭示」写在同一个 rAF 回调里 → 同一帧内 opacity 直接从 1 到 1，
+    // 浏览器没有中间态可补间，首屏文章**直接出现**，这就是读者反馈的「没有动效」。
+    // 拆成两层 rAF 后，隐藏态先绘制一次，下一帧加 .revealed 才会真正播过渡。
     document.documentElement.classList.add('has-reveal')
-    document.querySelectorAll(SEL).forEach((el) => {
-      const r = el.getBoundingClientRect()
-      if (r.top < window.innerHeight && r.bottom > 0) {
-        el.classList.add('revealed') // 已在视口：立即显示
-      } else {
-        io.observe(el) // 视口外：滚动到再显示
-      }
+    requestAnimationFrame(() => {
+      document.querySelectorAll(SEL).forEach((el) => {
+        const r = el.getBoundingClientRect()
+        if (r.top < window.innerHeight && r.bottom > 0) {
+          el.classList.add('revealed') // 已在视口：下一帧揭示 → 播错峰上浮
+        } else {
+          io.observe(el) // 视口外：滚动到再显示
+        }
+      })
     })
   }
 
@@ -107,6 +113,14 @@ function setupReveal() {
   window.addEventListener('load', handle)
 }
 
+/* 指针状态的**模块级共享槽**。
+   setupHeroPointer 每帧把它 lerp 后的当前值写进来，粒子引擎直接读。
+   为什么不各读各的 CSS 变量（--o-l/--o-r 就挂在 .VPHero 上）：
+   那意味着粒子每帧一次 getComputedStyle() —— 一次**强制同步样式计算**。
+   倾斜 + 开门 + 粒子同时在动时，正是最不该加这类强制重排的时刻。
+   同模块两个函数共享一个普通对象，是这里最省的一条路。 */
+const heroPointer = { oL: 0, oR: 0, mx: 0, my: 0, follow: false, mactive: false }
+
 /**
  * Hero 粒子场 —— hakim 的「Particles」思路（2026-09-12 替换掉原来的「鼠标墨痕」）。
  *
@@ -114,7 +128,19 @@ function setupReveal() {
  * 粒子匀速漂移、撞边反弹，**离鼠标越近越大**（distanceFactor），
  * 点击可以把最近的一颗「钉住」。原版源码：assets/hakim/_lab/src/particles_01.html。
  *
- * 为什么换掉原来那层：原墨痕峰值 alpha 只有 0.10，是**设计上就看不见**的
+ * ⚠️ 2026-09-19 改版（站长原话）：「门打开的缝隙，粒子往前涌吧，别再跟随鼠标了，
+ *    因为鼠标控制门，门挡住粒子了」。
+ *    原版的「离鼠标越近越大」被**整套拆掉**：同一个鼠标既开门的开合、又要放大它
+ *    跟前的粒子，而粒子就在被门盖住的那片区域里 —— 两个功能抢同一个输入，
+ *    结果是「放大最明显的地方正好被门挡着」，白做工。现在粒子只被**开门量**驱动：
+ *    门开得越大，粒子越往观者方向涌（变大、变快、从门缝那侧散开）。
+ *    输入源单一化之后，"鼠标 → 门 → 粒子"是一条清晰的因果链，而不是两个抢指针的系统。
+ *
+ *    实现要点：涌出的调制是**乘性叠加**，surge=0 时全部退化为 1（等比于旧版底纹），
+ *    所以门一关就连续地回到原来的样子，不需要任何状态复位、也不会跳。
+ *    见 draw() 里 surge 那段与 build() 里的 p.z。
+ *
+ * 为什么换掉更早那层「鼠标墨痕」：原墨痕峰值 alpha 只有 0.10，是**设计上就看不见的**
  * 「触感层」。它技术上完全正确，但读者永远注意不到 —— 属于本站 2026-09-12
  * 总结的那条教训：只满足「技术上能跑通」不算数。
  *
@@ -143,16 +169,28 @@ function startHeroParticles(canvas) {
   if (!ctx) return
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
-  const SPEED = 14 // 漂移速度 px/s
-  const GROW = 5 // 鼠标附近的放大上限（软边精灵比原版实心圆更"占面积"，所以上限比原版的 10 收得多）
-  const DENSITY = 6200 // 每多少 px² 一颗（1440×480 的 hero ≈ 111 颗）
+  const SPEED = 22 // 漂移速度 px/s（原 14：读者要「更强」，动感更足）
+  /* 「往前涌」的强度常数。三个都是 surge=1（门开到 90°）时的**满幅增益**，
+     平时按 surge 线性缩放 —— surge=0 时全部等于 1，也就是旧的静态底纹。
+       ZOOM 透视放大：粒子离消失点越远，被推得越开（"冲出来"的主要线索）
+       RUSH 速度增益：涌出来的粒子更快，底纹不再是匀速飘
+       PUFF 尺寸增益：靠近观者 = 更大 */
+  const ZOOM = 0.85
+  const RUSH = 1.25
+  const PUFF = 0.7
+  // 旧版（hakim Particles）鼠标附近的放大上限。点牧神后粒子恢复的就是这套机制
+  // ——原版 10 倍，软边精灵更"占面积"，当年收到 5 倍（见 09-13 提交 7d0ef3d）。
+  const GROW = 5
+  // 每多少 px² 一颗。原 6200（1440×480 hero ≈ 111 颗），2026-09-18 读者反馈
+  // 「太少了、太疏了，弄密一点、效果弄强烈一点」→ 收到 1500，约 4 倍密度
+  // （1440×340 的新 hero ≈ 384 颗；实测画布非透明像素 ~1 万）。
+  const DENSITY = 1500
 
   let w = 0
   let h = 0
   let raf = null
   let last = 0
   let parts = []
-  const mouse = { x: -9999, y: -9999, active: false }
 
   // 粒子用一组调色板（--hero-dots，逗号分隔），逐颗随机取色 —— 不能用 --ink：
   // 浅色模式下 --ink 是 #0a0a0b（近黑），而 hero 标题 .VPHero .name/.text 也是 --ink，
@@ -234,7 +272,8 @@ function startHeroParticles(canvas) {
   makeSprites()
 
   const build = () => {
-    const n = Math.max(70, Math.min(260, Math.round((w * h) / DENSITY)))
+    // 下限/上限同步上调（原 70/260）：读者要「更密」，大屏也不封顶太低
+    const n = Math.max(120, Math.min(520, Math.round((w * h) / DENSITY)))
     parts = []
     for (let i = 0; i < n; i++) {
       const dir = Math.random() * Math.PI * 2
@@ -247,14 +286,22 @@ function startHeroParticles(canvas) {
         // 逐颗随机取色。刻意均匀取（不是加权）：五色各占约 20%，
         // 任何一种颜色都不会在某片区域扎堆成「一滩色」。
         ci: Math.floor(Math.random() * Math.max(1, sprites.length)),
-        r: 1.5 + Math.random() * 1.9,
-        // alpha 0.34~0.68：彩色点需要一点浓度才认得出是颜色（太淡会退回灰）。
-        // 这里只是**浅色基准**，实际绘制时还会乘主题系数 alphaScale（暗色 0.78），
-        // 见 draw()。两档合成后与正文 --ink 的对比度分别 ≥5.9:1 / ≥4.8:1，
-        // 与纸底只有 1.8~3.0:1 —— 是底纹，不是第二层文字。
-        a: 0.34 + Math.random() * 0.34,
+        r: 2.2 + Math.random() * 2.6, // 原 1.5~3.4：读者要「更强」，点更大
+        // alpha「浅色基准」0.46~0.82（原 0.34~0.68）：彩色点要浓度才认得出颜色，
+        // 读者 2026-09-18 反馈「效果弄强烈一点」，整体上浮一档。
+        // 实际绘制时还会乘主题系数 alphaScale（暗色 0.78），见 draw()。
+        // 仍是 z-index:1 的底纹层、软边精灵，永远在文字（z-index:2）之下，不糊字。
+        a: 0.46 + Math.random() * 0.36,
         grow: 1,
         frozen: false,
+        /* 「深度」0..1：0 = 最远（贴在画布上，等于旧版底纹），1 = 最近。
+           门开时它随时间推进，粒子沿"离消失点越远被推得越开"的方向冲出来；
+           推到 1 就从 0 重新开始 —— 重生点正好在消失点（门缝那侧），
+           配合首尾淡入淡出，观感是「从门缝里新生一颗」而不是「凭空跳出来」。
+           ⚠️ 只有 surge>0 时才推进：门关着的时候 z 冻住，粒子完全退回旧版行为。 */
+        z: Math.random(),
+        // 每颗粒子的推进速率略有差异，避免整场粒子像一堵墙一起压过来
+        zv: 0.55 + Math.random() * 0.9,
       })
     }
   }
@@ -272,10 +319,44 @@ function startHeroParticles(canvas) {
 
   const draw = (dt) => {
     ctx.clearRect(0, 0, w, h)
+
+    /* ---- 开门量 → 涌出强度 ----------------------------------------------
+       取两扇门里开得大的那一边。为什么用 max 而不是相加：两扇门是可以同时开的
+       （鼠标在中间，各开 11.25°），相加会让"中点"反而比"贴边"更汹涌，
+       与站长的口径冲突 —— 他强调的是「移到最边上就打开到 90°」。
+       max 保证涌出强度单调跟着"最大开门角"走，中点最弱、贴边最强。 */
+    // 点击牧神后开启的「恢复旧版」模式：门控涌出整体归零，粒子回到 hakim 原版
+    // 运动 —— 匀速漂移、离鼠标越近越大（GROW），不再有透视投影与深度推进。
+    const follow = heroPointer.follow
+    const oL = follow ? 0 : heroPointer.oL
+    const oR = follow ? 0 : heroPointer.oR
+    const surge = oL > oR ? oL : oR
+    const fx = heroPointer.mx
+    const fy = heroPointer.my
+
+    /* 消失点（"往前涌"的透视原点）：门开哪边，粒子就从那边涌出来。
+       左门开 → 原点贴近左铰链（x≈0）；右门开 → 贴近右铰链（x≈w）；
+       两门等开量 → 落在正中。按开启量加权，所以原点会随指针平滑横移，
+       不会在"哪边更大"翻转的瞬间跳一下。
+       （门是绕左/右铰链转开的，缝就在铰链那一侧，所以原点贴边是对的。） */
+    const wsum = oL + oR
+    const vx = wsum > 1e-4 ? (oR * w) / wsum : w / 2
+    const vy = h / 2
+
+    // surge≈0 时这三项都退化成 1，等价于旧版静态底纹（乘性叠加，无跳变）
+    const speedMul = 1 + surge * RUSH
+    const sizeMul = 1 + surge * PUFF
+
     for (const p of parts) {
       if (!p.frozen) {
-        p.x += p.vx * dt
-        p.y += p.vy * dt
+        // 深度推进：门开得越大、"冲"得越快。dt 已夹到 50ms，切标签页不会瞬移。
+        if (surge > 0.001) {
+          p.z += surge * p.zv * dt
+          if (p.z > 1) p.z -= 1
+        }
+        const sp = speedMul
+        p.x += p.vx * sp * dt
+        p.y += p.vy * sp * dt
         if (p.x < 0) {
           p.x = 0
           p.vx = Math.abs(p.vx)
@@ -291,23 +372,45 @@ function startHeroParticles(canvas) {
           p.vy = -Math.abs(p.vy)
         }
       }
-      // 距离因子沿用原式 max(min(15 - d/10, 上限), 1)，只是把上限从 10 收到 GROW
+
+      /* 透视投影：离消失点越远，被推得越开 —— 这正是"朝观者冲过来"的视觉线索
+         （近大远小 + 向外扩散），比单纯把整场粒子等比放大更像"涌"。
+         e 是这颗粒子的涌出量：surge 门控 × 自身深度。 */
+      const e = surge * p.z
+      const s = 1 + e * ZOOM
+      const px = vx + (p.x - vx) * s
+      const py = vy + (p.y - vy) * s
+
+      /* 首尾淡入淡出，消掉 z 回绕时的"凭空跳出来"：
+         z 从 0 起步时 alpha 从 0 涨起（在门缝处新生），接近 1 时又淡下去
+         （已经贴到观者眼前、该退场了）。中段恒为 1，不影响常态底纹。
+         FADE 取 0.18：只在两端各 18% 的行程里生效，中间 64% 是全亮的。 */
+      const FADE = 0.18
+      const edge = Math.min(p.z, 1 - p.z) / FADE
+      // 门关着时（surge≈0）不参与淡出 —— 否则 z 冻在两端的那批粒子会永久变暗
+      const fade = surge > 0.001 ? Math.max(0, Math.min(1, edge)) : 1
+
+      // grow 保留（点击钉住那类放大仍走它），鼠标跟随的 target 已整体移除
+      // hakim 原版的「离鼠标越近越大」：target = max(min(15 - d/10, GROW), 1)。
+      // 门控期鼠标不参与（target 恒 1，grow 只会走回 1）；点完牧神才接管。
+      // 超出 PAD 缓冲带（mactive=false）等同旧版 pointerleave，全场缩回 1 倍。
       let target = 1
-      if (mouse.active) {
-        const dx = p.x - mouse.x
-        const dy = p.y - mouse.y
+      if (follow && heroPointer.mactive) {
+        const dx = p.x - fx
+        const dy = p.y - fy
         target = Math.max(Math.min(15 - Math.sqrt(dx * dx + dy * dy) / 10, GROW), 1)
       }
       p.grow += (target - p.grow) * Math.min(1, dt * 7)
-      const r = p.r * p.grow
-      // 放大的同时略微加深：软边精灵把「变大」的视觉冲击削掉了一截
-      // （实测鼠标区 alpha 总量只涨到 6.9 倍，实心圆那版是 35 倍），
-      // 靠这一项把对比补回来，又不至于把墨团糊成实心块。
-      // alpha 0.34~0.68 是**浅色基准**，再乘主题系数 alphaScale（暗色 0.78）。
-      // 彩色点需要一点浓度才认得出是颜色（太淡会退回灰），
-      // 但合成后与正文 --ink 的对比度仍有 4.8:1 以上 —— 是底纹，不是第二层文字。
-      ctx.globalAlpha = Math.min(1, p.a * alphaScale * (1 + (p.grow - 1) * 0.16))
-      ctx.drawImage(sprites[p.ci] || sprites[0], p.x - r, p.y - r, r * 2, r * 2)
+      const r = p.r * p.grow * sizeMul * s
+      /* alpha：门控期随涌出量略升（e 项）；旧版模式改为随 grow 略加深 ——
+         软边精灵把「变大」的视觉冲击削掉了一截（实测鼠标区 alpha 总量只涨 6.9 倍），
+         靠这一项把对比补回来。 */
+      const growBoost = follow ? 1 + (p.grow - 1) * 0.16 : 1
+      ctx.globalAlpha = Math.min(
+        1,
+        p.a * alphaScale * fade * (1 + e * 0.16) * growBoost
+      )
+      ctx.drawImage(sprites[p.ci] || sprites[0], px - r, py - r, r * 2, r * 2)
     }
     ctx.globalAlpha = 1
   }
@@ -331,38 +434,12 @@ function startHeroParticles(canvas) {
 
   resize()
 
-  // 事件挂在 hero 上而不是 canvas 上：canvas 是 pointer-events:none，
-  // 自己收不到鼠标事件（这也正是文字/按钮还能正常点的原因）
-  const zone = canvas.parentElement || canvas
-  zone.addEventListener('pointermove', (e) => {
-    const r = canvas.getBoundingClientRect()
-    mouse.x = e.clientX - r.left
-    mouse.y = e.clientY - r.top
-    mouse.active = true
-    start()
-  })
-  zone.addEventListener('pointerleave', () => {
-    mouse.active = false
-    mouse.x = -9999
-    mouse.y = -9999
-  })
-  zone.addEventListener('pointerdown', (e) => {
-    const r = canvas.getBoundingClientRect()
-    const mx = e.clientX - r.left
-    const my = e.clientY - r.top
-    let best = null
-    let bestD = 400 // 只在 20px 内找，否则点空白处会钉住远处的粒子
-    for (const p of parts) {
-      const dx = p.x - mx
-      const dy = p.y - my
-      const d = dx * dx + dy * dy
-      if (d < bestD) {
-        bestD = d
-        best = p
-      }
-    }
-    if (best) best.frozen = !best.frozen
-  })
+  // ⚠️ 2026-09-19：原来这里挂了三条鼠标监听（pointermove 放大 / pointerleave 复位 /
+  // pointerdown 钉住最近一颗），现已**全部移除**。粒子层不再有任何鼠标输入 ——
+  // 它的唯一驱动是 heroPointer（= 开门量），见文件上方 heroPointer 与 draw()。
+  // 移除 pointerdown 钉住的另一个原因：canvas 是 pointer-events:none，监听只能挂在
+  // .VPHero 上，于是"点 hero 里任何按钮"都会顺手钉住一颗远处的粒子 —— 它从来就不是
+  // 一个干净的交互，只是原版 demo 的遗留。真要恢复，得先把它挂到不会和按钮抢事件的地方。
   window.addEventListener('resize', resize)
   document.addEventListener('visibilitychange', () =>
     document.hidden ? stop() : start()
@@ -390,6 +467,279 @@ function ensureHeroParticles() {
   c.setAttribute('aria-hidden', 'true')
   hero.appendChild(c)
   startHeroParticles(c)
+  return true
+}
+
+/* 封面照片（门的图案来源）。2000×480 的 q86 派生版，272KB；
+   原图 zhihu_cover.jpg 是 1.55MB，只作母版存档、不进页面。 */
+const COVER_SRC = '/zhihu_cover_panel.jpg'
+let coverPreloaded = false
+
+/**
+ * 往 .VPHero 追加「封面两扇门」+「纸纱」（纯装饰）。
+ *
+ * 站长需求（第三版，最终口径）：「一张完整的图片从中间劈开，中间不要留缝隙，
+ * 刚进入首页时其实是一张完整的照片。图片不是在两边，而是铺满整个 cover。
+ * 然后鼠标移动到哪里，哪扇门就打开，打开的角度大一点，后面的粒子全部都透出来。
+ * 鼠标在中间，那就两扇门都打开一点……鼠标移到最边上，就打开到 90°。」
+ *
+ * 为什么只能用 JS 注入：.VPHero 里没有可用的插槽。唯一能塞自定义内容的
+ * home-hero-image 插槽会让 .VPHero 拿到 has-image 类，而 VPHero.vue 里有
+ * `.VPHero.has-image .container { text-align: left }` —— 布局立刻变成两栏左对齐，
+ * 正好毁掉刚复原的居中排版。所以走 appendChild（与 .hero-field 同一条路）。
+ *
+ * ⚠️ 必须 appendChild 到**末尾**：Vue 靠子节点顺序定位，插在最前面会破坏对位，
+ *    内容层会消失（.hero-field 那个坑，见 ensureHeroParticles 的注释）。
+ *    ⚠️ 但"追加在末尾"正是层序的雷：门/纸纱的 DOM 顺序都在 .container 之后，
+ *    若 z-index 同级就由顺序决定胜负 —— 见 ㉕ 与 ③ 段（.container 已提到 4）。
+ *
+ * 追加三块东西，各有各的 z-index（墨彩 0 < 粒子 1 < 门 2 < 纸纱 3 < 文字 4）：
+ *   .cover-door--l / .cover-door--r  两扇门，各自内含一张 200% 宽的 <img>
+ *   .cover-veil                     纸色柔光，保证文字在任何开门角度可读
+ *
+ * 为什么门里放真 <img> 而不是 CSS background-image：
+ *   要拿到 load 事件，加载完再挂 is-loaded 淡入。照片是这里注入之后才开始下载的，
+ *   270KB 落地前若门已经"敞开"，观感是先看见一块空门、再"啪"地跳出整幅照片。
+ *   两扇门同 src ⇒ 浏览器只发一次请求，两份解码实例。
+ *
+ * ⚠️ 开启量不在这里算：由 setupHeroPointer 每帧写 --o-l / --o-r（CSS 默认 0 =
+ *    首帧紧闭 = 一张完整照片）。这里只管"把东西摆上去"。
+ *
+ * 返回 true 表示"该做的都做了"；不在首页时返回 false，让轮询继续等。
+ * 幂等：门与纸纱各自判存，任一块缺了就只补那一块。
+ */
+function ensureHeroCover() {
+  if (document.readyState === 'loading') return false
+  const hero = document.querySelector('.VPHero')
+  if (!hero) return false
+
+  const hasDoors = !!hero.querySelector('.cover-door')
+  const hasVeil = !!hero.querySelector('.cover-veil')
+  if (hasDoors && hasVeil) return true
+
+  // 先把下载请求发出去，缩短"空门"的时间窗。
+  // 与下面两个 <img> 同 URL ⇒ 命中同一份响应，不会重复下载。
+  if (!coverPreloaded) {
+    coverPreloaded = true
+    const warm = new Image()
+    warm.decoding = 'async'
+    warm.src = COVER_SRC
+  }
+
+  if (!hasDoors) {
+    for (const side of ['l', 'r']) {
+      const door = document.createElement('span')
+      door.className = 'cover-door cover-door--' + side
+      door.setAttribute('aria-hidden', 'true')
+      const img = document.createElement('img')
+      img.className = 'cover-door__img'
+      img.src = COVER_SRC
+      img.alt = ''
+      img.decoding = 'async'
+      img.draggable = false
+      img.setAttribute('aria-hidden', 'true')
+      // 缓存命中时 load 可能已经过去（甚至同步完成），再兜一道 complete。
+      const mark = () => img.classList.add('is-loaded')
+      img.addEventListener('load', mark, { once: true })
+      if (img.complete) mark()
+      door.appendChild(img)
+      hero.appendChild(door)
+    }
+  }
+
+  if (!hasVeil) {
+    const veil = document.createElement('span')
+    veil.className = 'cover-veil'
+    veil.setAttribute('aria-hidden', 'true')
+    hero.appendChild(veil)
+  }
+
+  return true
+}
+
+/**
+ * 把刊名「牧神的笔记」拆成「牧神」+ 右侧栏（三个 BBC 主题色块 +「的笔记」），
+ * 好让前两字格外大，同时把 index.md 的 text 段标（投资 · 工业自动化 · 工程实践）
+ * 变成刊名右上方三个醒目的实底色块。
+ *
+ * 结构（不对称双栏）：
+ *   .name
+ *     .wm-major   牧神（大，左侧）
+ *     .wm-tail    ┐ 右栏，inline-flex 列，整列高度撑到与牧神等高
+ *       .wm-chip  投资
+ *       .wm-chip  工业自动化
+ *       .wm-chip  工程实践
+ *       .wm-minor 的笔记（栏底）
+ *                  ┘
+ * 这样「三个色块 + 的笔记」恰好补满牧神旁边的竖直空位（站长要求的"补齐身高差"）。
+ *
+ * 为什么用 JS 拆、不改 index.md：
+ *   hero.name 在 VPHero 里是 `v-html` 渲染的整串，CSS 没有"只选前两个字符"的
+ *   手段（::first-letter 只管一个字符）。在 markdown 里塞 <span> 会绕过 v-html、
+ *   也会让导航栏那个同名字符串对不上（㉔ 的滚动飞行靠两者文本一致）。
+ *   色块文案则来自 .VPHero .text（index.md 的 text 字段），JS 解析它得到三个词，
+ *   解析失败回退到固定清单，不依赖任何外部文案形态。
+ *
+ * ⚠️ 只改结构、文本一字不改：滚动飞行量的是 .VPHero .name **这个元素**的矩形
+ *    （见 setupHeroFly），元素还在、class 不变，拆分不影响它。
+ * ⚠️ 飞行替身必须**去掉 .wm-chips**（buildGhost 复制前先删掉色块行）：飞行落点是
+ *    导航栏里的「牧神的笔记」纯文字，带着三个色块飞过去会既宽又错位。替身只留
+ *    .wm-major + .wm-minor（见 custom.css 的 .hero-fly-ghost .wm-* 两条）。
+ *    .wm-minor「的笔记」在 .wm-tail 内、要保留，只删色块行。
+ *
+ * 名字短于 3 字就不拆：那只会在一两个字之间硬造一个字号跳变，比不拆更难看。
+ * 返回 true 表示"该做的都做了"；不在首页时返回 false，让轮询继续等。
+ */
+function ensureHeroWordmark() {
+  if (document.readyState === 'loading') return false
+  const name = document.querySelector('.VPHero .name')
+  if (!name) return false
+  if (name.querySelector('.wm-major')) return true
+  const raw = (name.textContent || '').trim()
+  if (raw.length < 3) return true
+  const major = document.createElement('span')
+  major.className = 'wm-major'
+  major.textContent = raw.slice(0, 2)
+
+  // 右侧栏：三个 BBC 主题色块横排成一行（等宽正方形，文案来自 .text 的
+  // 「投资 · 工业自动化 · 工程实践」），「的笔记」在色块下方，整体作为一个
+  // 小单元傍在「牧神」右侧。只有「牧神」放大，三个色块与「的笔记」都缩小。
+  const tail = document.createElement('span')
+  tail.className = 'wm-tail'
+  const chips = document.createElement('span')
+  chips.className = 'wm-chips'
+  for (const label of readHeroChips()) {
+    const chip = document.createElement('span')
+    chip.className = 'wm-chip'
+    chip.textContent = label
+    chips.appendChild(chip)
+  }
+  tail.appendChild(chips)
+  const minor = document.createElement('span')
+  minor.className = 'wm-minor'
+  minor.textContent = raw.slice(2)
+  tail.appendChild(minor)
+
+  name.textContent = ''
+  name.append(major, tail)
+  return true
+}
+
+// 从 hero 段标 .text 取三个主题词；解析失败回退到固定清单（不依赖外部文案形态）。
+function readHeroChips() {
+  const t = document.querySelector('.VPHero .text')
+  if (t) {
+    const parts = (t.textContent || '')
+      .split(/[·•・・｜|]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (parts.length >= 2) return parts
+  }
+  return ['投资', '工业自动化', '工程实践']
+}
+
+/**
+ * 点击「牧神」→ 两扇门像彩带一样裂开消失，随后粒子切回「跟随鼠标」模式。
+ *
+ * 实现要点：
+ *  - 每扇门被切成 N 条竖向彩带（.ribbon），每条用 background 把整幅封面按
+ *    「本扇门显示的横向区间」切片还原 —— 背景尺寸 = hero 整宽×整高，
+ *    background-position-x = -(本扇门左缘在封面里的横坐标 + 第 i 条左缘)，
+ *    于是每条彩带显示的正是门关着时那一条位置的画面，对齐无缝。
+ *  - 门本体在 .dissolving 下瞬间摊平（transform:none）+ overflow:visible，
+ *    彩带继承门的坐标系、从平的门上裂开飞走，不会跟着 3D 旋转错位。
+ *  - 每条彩带终态：向外平移 + 轻微旋转 + scaleX→0.05（收成一条细带），
+ *    transition-delay 按 i 递增 → 由铰链向自由边依次裂开，像被撕开的彩带。
+ *  - 动画结束（超时兜底）后 display:none 真门与纸纱，置 heroPointer.follow=true 交棒。
+ *
+ * 幂等：.wm-major 只绑一次（data-ribbon-bound）；门已消失则二次点击无事发生。
+ * prefers-reduced-motion：跳过彩带，直接隐藏门并开启 follow（粒子层本身不跑动画）。
+ */
+function onRibbonClick() {
+  const hero = document.querySelector('.VPHero')
+  if (!hero) return
+  const doors = hero.querySelectorAll('.cover-door')
+  if (!doors.length) return
+
+  // 粒子运动**立刻**切换到旧版跟随，不等彩带散完 —— 站长原话「门一倒下就改过来」
+  heroPointer.follow = true
+
+  const r = hero.getBoundingClientRect()
+  const W = r.width
+  const dh = r.height
+  const N = 14 // 每扇门彩带条数
+
+  const finish = () => {
+    doors.forEach((d) => (d.style.display = 'none'))
+    const veil = hero.querySelector('.cover-veil')
+    if (veil) veil.style.display = 'none'
+    heroPointer.follow = true
+  }
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    finish()
+    return
+  }
+
+  let pending = doors.length
+  doors.forEach((door) => {
+    const isLeft = door.classList.contains('cover-door--l')
+    const baseX = isLeft ? 0 : W / 2 // 本扇门在「整幅封面」里的左缘横坐标
+    const dw = W / 2
+    const sw = dw / N
+    const img = door.querySelector('.cover-door__img')
+    if (img) img.style.opacity = '0'
+    for (let i = 0; i < N; i++) {
+      const strip = document.createElement('span')
+      strip.className = 'ribbon'
+      strip.style.left = i * sw + 'px'
+      strip.style.width = sw + 'px'
+      strip.style.backgroundImage = 'url("' + COVER_SRC + '")'
+      strip.style.backgroundSize = W + 'px ' + dh + 'px'
+      // 整幅封面按 W×dh 缩放铺开，取负位移露出本扇门第 i 条位置的画面
+      strip.style.backgroundPosition = '-' + (baseX + i * sw) + 'px 0'
+      const dir = isLeft ? -1 : 1
+      const rx = dir * (sw * (1.0 + i * 0.45)) // 距铰链越远飘得越远
+      const ry = (i % 2 ? -1 : 1) * (6 + Math.random() * 24)
+      const rr = dir * (16 + Math.random() * 38)
+      strip.style.setProperty('--rx', rx + 'px')
+      strip.style.setProperty('--ry', ry + 'px')
+      strip.style.setProperty('--rr', rr + 'deg')
+      strip.style.transitionDelay = i * 0.022 + 's' // 由铰链向自由边依次裂开
+      door.appendChild(strip)
+    }
+    // 强制回流：确保彩带先以「平铺」初态渲染，再加 .dissolving 才会产生过渡
+    void door.offsetWidth
+    door.classList.add('dissolving')
+    // transition 总时长 ≈ 0.95s + 最大 delay(N*0.022)；超时兜底收尾
+    setTimeout(() => {
+      door.style.display = 'none'
+      if (--pending <= 0) finish()
+    }, 1000 + N * 22)
+  })
+}
+
+/** 幂等地把点击监听绑到「牧神」二字上（刊名存在即绑，已绑则跳过）。 */
+function ensureHeroRibbon() {
+  if (document.readyState === 'loading') return false
+  const major = document.querySelector('.VPHero .name .wm-major')
+  if (!major) return false
+  if (major.dataset.ribbonBound) return true
+  major.dataset.ribbonBound = '1'
+  major.style.cursor = 'pointer'
+  major.title = '点击：门如彩带般散开'
+  // 审计 major①：可点击元素必须键盘可达 —— span 升格为按钮语义，
+  // 否则触屏/键盘/读屏用户完全无门路（彩带特效对他们等于不存在）。
+  major.setAttribute('role', 'button')
+  major.tabIndex = 0
+  major.setAttribute('aria-label', '牧神的笔记：点击后封面两门如彩带散开')
+  major.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onRibbonClick()
+    }
+  })
+  major.addEventListener('click', onRibbonClick)
   return true
 }
 
@@ -855,11 +1205,457 @@ function setupViewTransitions(router) {
   }
 }
 
+/**
+ * Hero 指针：鼠标驱动的（a）文字立体倾斜 + 彩色错版阴影、（b）封面两扇门开合。
+ * 几何与配色全在 custom.css ㉔ / ㉕ 段，这边只负责一件事 —— **指针在哪**。
+ *
+ * 站长原话：「不要太枯燥……鼠标移动上面去的时候出现相应角度，不同颜色的阴影」，
+ * 以及「鼠标移动到哪里，哪扇门就打开……鼠标移到最边上，就打开到 90°」。
+ *
+ * 两组变量，同一个指针源、同一条 lerp 曲线：
+ *   --mx / --my   指针相对 hero **中心**的归一化位置（-1..1）→ 文字倾斜与错版
+ *   --o-l / --o-r 指针相对左/右**铰链**的接近度（0..1）    → 门开启量
+ * 两者在边缘处并不等价（--mx 被 clamp 到 ±1 会丢信息），所以分开算、不互相派生。
+ *
+ * 为什么必须 lerp（每帧只向目标插值 0.12）而不是把指针位置直写进去：
+ *   原始指针值又碎又抖，直写会有「手一抖、字就抖」的廉价感。插值带来一点惯性与
+ *   回弹，手感的高级感就来自这里。收敛到阈值内自动停掉 rAF，不常驻占帧。
+ * —— 也正因如此，CSS 侧**不能**再加 transition：两次缓动叠加会发黏，像在拖。
+ *   门也共用同一个 EASE：门那么大一块，若给它单独的缓动，门和字的动作会错开，
+ *   读起来是"两个系统"，而不是"同一个指针在推整幅画面"。
+ *
+ * 只在「精确指针 + 可悬停」的设备上启用：触屏没有 hover 语义，倾斜只会变成
+ * 跟着点击乱错位。prefers-reduced-motion 也直接跳过（变量保持 0：字是平的、
+ * 门是紧闭的 —— 关着就是一张完整照片，正好是最稳的静态态）。
+ *
+ * 与滚动飞行的关系：飞行期间原刊名隐身、由 body 上的替身出面，而替身不读这两个
+ * 变量（永远笔直），所以倾斜不会污染落点；飞行那侧还会把原刊名的 inline
+ * transform 钉成 none，保证量到的是**未倾斜**的布局盒。见 setupHeroFly。
+ */
+function setupHeroPointer() {
+  const noop = () => {}
+  if (typeof window === 'undefined') return noop
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return noop
+  if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return noop
+
+  const hero = () => document.querySelector('.VPHero')
+  const GAIN = 1.35 // 归一化增益：指针走到约七成宽处即到满幅，不必顶到屏幕边缘才有反应
+  /* 门的开启曲线指数。pow 3 把行程压向**外侧三分之一**，落点：
+       边 nx=0/1  → 1.000 = 90°    ← 站长指定「移到最边上打开到 90°」
+       1/4 处     → 0.422 = 38°
+       中点       → 0.125 = 11.25° ← 站长指定「鼠标在中间，两扇门都打开一点」
+     若用线性映射，中点直接是 0.5 = 45°，那是「开了一半」，不是「一点」。
+     指数越大越像"平时关着、贴到边缘才猛地打开"，这正是要的手感。 */
+  const DOOR_POW = 3
+  const EASE = 0.12 // 每帧向目标插值的比例
+  const STILL = 0.0015 // 收敛阈值（0.0015 × 90° = 0.135°，看不出最后一跳）
+  let raf = null
+  let tx = 0 // 目标值（-1..1）
+  let ty = 0
+  let cx = 0 // 当前值（lerp 之后真正写进 CSS 变量的那个）
+  let cy = 0
+  let toL = 0 // 门开启量的目标值（0..1）
+  let toR = 0
+  let coL = 0 // 门开启量的当前值
+  let coR = 0
+
+  const write = () => {
+    const h = hero()
+    if (!h) return
+    h.style.setProperty('--mx', cx.toFixed(4))
+    h.style.setProperty('--my', cy.toFixed(4))
+    h.style.setProperty('--o-l', coL.toFixed(4))
+    h.style.setProperty('--o-r', coR.toFixed(4))
+    // 同一份 lerp 后的开门量，广播给粒子引擎（它据此决定"涌出"强度）。
+    // ⚠️ 走这个共享对象、而不是让粒子去读 --o-l/--o-r：后者是每帧一次
+    // getComputedStyle 强制同步样式计算。详见文件上方 heroPointer 的说明。
+    heroPointer.oL = coL
+    heroPointer.oR = coR
+  }
+
+  const tick = () => {
+    cx += (tx - cx) * EASE
+    cy += (ty - cy) * EASE
+    coL += (toL - coL) * EASE
+    coR += (toR - coR) * EASE
+    // 收敛就停：阈值既保证「停得掉」，又小到看不出最后一跳。
+    // 四个量都收住才停 —— 只盯文字的话，门还在动就把 rAF 掐了。
+    if (
+      Math.abs(tx - cx) < STILL && Math.abs(ty - cy) < STILL &&
+      Math.abs(toL - coL) < STILL && Math.abs(toR - coR) < STILL
+    ) {
+      cx = tx
+      cy = ty
+      coL = toL
+      coR = toR
+      write()
+      raf = null
+      return
+    }
+    write()
+    raf = requestAnimationFrame(tick)
+  }
+
+  const start = () => {
+    if (raf === null) raf = requestAnimationFrame(tick)
+  }
+
+  // 归零 = 字放平 + 两扇门关回去（门一关就重新盖住粒子，回到"一张完整照片"）
+  const release = () => {
+    tx = 0
+    ty = 0
+    toL = 0
+    toR = 0
+    // 指针算作"离开 hero"：旧版粒子对鼠标的放大效应同步失效（grow 自己走回 1）
+    heroPointer.mactive = false
+    start()
+  }
+
+  // 出界回落：指针跑到 hero 区域之外（外扩 PAD 作缓冲）就不再跟随，字自己走回平放。
+  // 没有这道闸的话，监听挂在 window 上，鼠标移到 hero 下方的文章列表、或上方导航栏
+  // 时，刊名仍在背景里跟着指针歪 —— 语义上就成了「全页跟鼠标」，不是「移上去才有反应」。
+  const PAD = 80
+  const onMove = (e) => {
+    const h = hero()
+    if (!h) {
+      // 不在首页（文章/归档页没有 hero）：把字放平，免得带着上一页的值回来
+      release()
+      return
+    }
+    const r = h.getBoundingClientRect()
+    if (!r.width || !r.height) return
+    // follow 模式（点击牧神后开启）：实时把指针映射成 hero 局部坐标广播给粒子引擎。
+    // 放在出界闸门之前 —— 只要 hero 还在 DOM，指针坐标就持续刷新，粒子不会卡死。
+    heroPointer.mx = e.clientX - r.left
+    heroPointer.my = e.clientY - r.top
+    if (
+      e.clientX < r.left - PAD || e.clientX > r.right + PAD ||
+      e.clientY < r.top - PAD || e.clientY > r.bottom + PAD
+    ) {
+      release()
+      return
+    }
+    tx = Math.max(-1, Math.min(1, ((e.clientX - (r.left + r.width / 2)) / (r.width / 2)) * GAIN))
+    ty = Math.max(-1, Math.min(1, ((e.clientY - (r.top + r.height / 2)) / (r.height / 2)) * GAIN))
+    // 指针确认在 hero 缓冲带内：旧版粒子的鼠标放大效应在此生效
+    heroPointer.mactive = true
+    /* 门的开启量：用**整幅 hero 的归一化横坐标**，不加 GAIN。
+       GAIN 是给文字准备的"走到七成宽就到满幅"；门要的是站长那句
+       「鼠标移到最边上，就打开到 90°」—— 归一化才是它的字面意思。
+       左门看"离左铰链多近"、右门看"离右铰链多近"，两侧互不干扰，
+       所以鼠标贴在左边时右门是**完全关上**的（0），不是"开一点"。 */
+    const nx = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width))
+    toL = Math.pow(1 - nx, DOOR_POW)
+    toR = Math.pow(nx, DOOR_POW)
+    start()
+  }
+
+  // 指针移出窗口不会再有 mousemove，靠 relatedTarget 为空判定离开
+  const onOut = (e) => {
+    if (!e.relatedTarget) release()
+  }
+
+  window.addEventListener('mousemove', onMove, { passive: true })
+  window.addEventListener('mouseout', onOut)
+  window.addEventListener('blur', release)
+  window.addEventListener('resize', release)
+
+  // 切页只**归位**、不解绑：监听挂在 window 上、跟着 app 存活一辈子，
+  // 解绑会让首页第二次进来就再也没有倾斜。新页的 hero 应当从平的状态起步
+  // —— 门也一样，从"紧闭 = 一张完整照片"起步，而不是带着上一页的开合度。
+  return () => {
+    tx = 0
+    ty = 0
+    toL = 0
+    toR = 0
+    cx = 0
+    cy = 0
+    coL = 0
+    coR = 0
+    write()
+  }
+}
+
+/**
+ * Hero 刊名 → 导航栏站名的「神奇移动」（滚动驱动）。
+ *
+ * 与本站文章点击的 vt-title 是**同一种**魔法移动（同一元素从 A 位形变到 B 位），
+ * 只是触发条件不同：
+ *   - 文章点击：离散的一次导航 → 交给 View Transitions（拍新旧两帧、浏览器补间）。
+ *   - 滚动：连续过程，View Transitions 不适用 → 用 FLIP 思路每帧实时
+ *     「测首末矩形 → invert → play」，把刊名的 translate/scale 映射到导航站名。
+ *
+ * 关键实现点（都踩过）：
+ * 1) 飞行对象必须是**挂在 body 上的固定定位替身**，不能直接飞原刊名 ——
+ *    导航栏是 .VPNav（fixed; z-index: 30），滚动后 .VPNavBar 有不透明底色
+ *    （实测 rgb(241,239,234)），而 hero 内容被关在 .VPHero .container
+ *    （transform + z-index: 2）的层叠上下文里，z-index 怎么调都抬不到导航栏之上。
+ *    实测后果：刊名一进导航栏区间就被整段吞掉，「标题飞到一半凭空消失」
+ *    （染色法实测顶部 120px 品红像素 = 0）。详见 buildGhost()。
+ * 2) 替身离开了 .VPHero 的选择器作用域，类名不再生效 → 样式必须逐条抄计算值。
+ * 3) 落点取**文字 span**，不取 .VPNavBarTitle .title：那个 .title 是包着头像 + 站名的
+ *    <a>，取它会整体左偏一个头像的宽度（实测盒中心 88.8 vs 文字中心 104.8，差 16px）。
+ * 4) 缩放比只能取「导航站名字号 ÷ 刊名字号」，**不能取矩形高度比**：导航标题容器
+ *    占满整条导航高度（实测 64px），比刊名（54px）还高，会越缩越大（实测 1.17 倍）。
+ * 5) 末段交叉溶解：替身淡出、导航站名同步淡入（同一个 out，窗口压在最后 22%）。
+ *    共享元素变形的铁律是**任一时刻只有一个实例可见** —— 顶部若让 hero 大字与导航
+ *    站名同框，读起来就是「复制」而不是「移动」。CSS 里已用 html:has(.VPHero) 首帧
+ *    就把站名藏起（避免加载闪一下），JS 的 inline opacity 再接管飞行。
+ * 6) 原刊名带 hero-rise 入场动画（fill: both），动画结束后它会持续压过 inline style
+ *    → 飞行时把 name.style.animation 置 none，inline 的隐身才生效。
+ * 7) 每次读元素用 querySelector 现取（不做一次捕获）：SPA 首页→文章→首页往返后
+ *    hero 是重建的节点，捕获的旧引用会失效（同 .hero-field 那个坑）。
+ * 8) 只在 ≥960px 跑：VitePress 的 .VPNav 仅在宽屏是 position: fixed，窄屏是 relative，
+ *    整条导航随页面滚走 —— 没有固定落点，飞行无意义。CSS 侧的同款守卫见 custom.css。
+ * 9) 切页必须清场并重算（返回的 cleanup）：SPA 导航不触发 scroll，残留的 inline
+ *    opacity 会把新页站名锁成隐形。enhanceApp 的 onAfterRouteChange 里调用。
+ */
+function setupHeroFly() {
+  if (typeof window === 'undefined') return
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+  const TRIGGER = 300 // 滚动多少 px 内完成整段飞行
+  // ⚠️ 与 custom.css 里那条 html:has(.VPHero) 的守卫必须一致：只在 ≥960px 跑。
+  const WIDE = window.matchMedia('(min-width: 960px)')
+  let raf = null
+  let ghost = null // 挂在 body 上的固定定位替身
+
+  const heroName = () => document.querySelector('.VPHero .name')
+  // ⚠️ 落点必须是**文字 span**，不能取 `.VPNavBarTitle .title`。
+  // 实测那个 .title 是同时包着头像与站名的 <a>：
+  //   <a class="title"><img class="VPImage logo" src="/zhihu_avatar.jpg"><span>牧神的笔记</span></a>
+  // 取它的中心会让刊名整体左偏一个头像的宽度 —— 实测盒中心 88.8 vs 文字中心 104.8，
+  // 差 16px（正好是 24px 头像 + 8px 间距的一半）。这种偏差算样式看数字是看不出来的。
+  const navTitle = () => {
+    const link =
+      document.querySelector('.VPNavBarTitle .title') ||
+      document.querySelector('.VPNavBarTitle a') ||
+      document.querySelector('.VPNavBar .title')
+    if (!link) return null
+    return link.querySelector('span') || link
+  }
+
+  /**
+   * 造一个**固定定位替身**挂在 body 上，用来承载飞行。
+   *
+   * 为什么不能直接飞原刊名：导航栏是 .VPNav（position: fixed; z-index: 30），
+   * 滚动后 .VPNavBar 有不透明底色（实测 rgb(241,239,234)），而 hero 内容被关在
+   * .VPHero .container（transform + z-index: 2）的层叠上下文里 —— 无论怎么调
+   * z-index 都抬不到导航栏之上（父级 transform 必然建立层叠上下文，这是死结）。
+   * 实测后果：刊名一进导航栏区间就被整段吞掉，「标题飞到一半凭空消失」
+   * （染色法实测顶部 120px 品红像素 = 0）。替身是 body 的直接子节点
+   * （z-index: 60 > 导航栏 30），不受 hero 层叠上下文约束，能稳稳压在导航栏之上。
+   *
+   * 样式必须逐条复刻计算值：替身离开了 .VPHero 的选择器作用域，类名不再生效；
+   * 尤其 .clip 的渐变文字（background-clip: text + -webkit-text-fill-color:
+   * transparent）必须把 background-image 一起抄过去，否则会退化成实色字。
+   * 字号只抄一次，所以视口变化（clamp() 会改字号）时必须重建 —— 见 onResize。
+   */
+  const buildGhost = (name) => {
+    const cs = getComputedStyle(name)
+    const g = document.createElement('span')
+    g.className = 'hero-fly-ghost' // 只为可调试性（无样式绑定），排查时一眼能认出
+    // ⚠️ 必须抄 innerHTML 而不是 textContent：刊名已被 ensureHeroWordmark 拆成
+    // 「牧神」（大）+「的笔记」（0.4em）两段。若只抄纯文本，替身会用整个刊名的
+    // 字号（~112px）去排 5 个字，比真实刊名宽 40%，起飞瞬间会横向跳一下。
+    // 抄 innerHTML 后两段各自的 em 字号在替身上照样成立（见 custom.css 里
+    // .hero-fly-ghost .wm-major / .wm-minor 那两条）。
+    // ⚠️ 但**先删掉 .wm-chips**（右侧三个 BBC 色块行）：飞行落点是导航栏里的
+    // 「牧神的笔记」纯文字，带着色块飞过去既宽又错位。替身只留 major + minor
+    // —— .wm-minor「的笔记」在 .wm-tail 内、要保留，只删色块行。
+    const ghostSrc = name.cloneNode(true)
+    const chipsNode = ghostSrc.querySelector('.wm-chips')
+    if (chipsNode) chipsNode.remove()
+    g.innerHTML = ghostSrc.innerHTML
+    // ⚠️ line-height 必须抄成**比值**，不能抄计算后的 px —— 和上面 innerHTML 是同一
+    // 类陷阱（抄算好的值 = 丢掉 em / 比值的语义）。
+    // .VPHero .name 写的是 `line-height: 1`（无单位），无单位值会作为「数字」继承，
+    // 于是 .wm-minor 按自己的 0.4em 字号重算成 44.7px；若替身抄的是绝对值 111.84px，
+    // .wm-minor 就原样继承 111.84px → 行盒高出 28px（实测 139.84 vs 111.84）。
+    // 后果不是横向跳，而是**纵向错位**：行盒向下多出 28px 使中心下移 14px，
+    // 而 transform-origin 是 center center，落点算的是「盒中心 → 导航文字中心」，
+    // 于是飞行末段（交叉溶解窗口）替身墨水落在导航站名下方约 12px 处 —— 溶解时
+    // 明显看得出两个位置。抄成比值就与 .name 完全同构，行盒回到 111.84px。
+    const fsPx = parseFloat(cs.fontSize)
+    const lhPx = parseFloat(cs.lineHeight)
+    const lhRatio = fsPx > 0 && isFinite(lhPx) ? lhPx / fsPx : null
+    g.setAttribute('aria-hidden', 'true')
+    g.style.cssText = [
+      'position:fixed',
+      'left:0',
+      'top:0',
+      'margin:0',
+      'padding:0',
+      'white-space:pre',
+      'pointer-events:none',
+      'transform-origin:center center',
+      'will-change:transform,opacity',
+      'z-index:60',
+      'font-family:' + cs.fontFamily,
+      'font-size:' + cs.fontSize,
+      'font-weight:' + cs.fontWeight,
+      'font-style:' + cs.fontStyle,
+      'letter-spacing:' + cs.letterSpacing,
+      // 比值优先；cs.lineHeight 是 'normal' 等无法解析的值时退回原串。
+      'line-height:' + (lhRatio !== null ? lhRatio : cs.lineHeight),
+      'color:' + cs.color,
+      // ㉔ 段给刊名加了三层墨彩错版阴影，替身必须一起抄走 ——
+      // 否则标题一进入飞行就"褪成单色"，交接瞬间会看到明显跳变。
+      'text-shadow:' + cs.textShadow,
+      '-webkit-text-fill-color:' + cs.webkitTextFillColor,
+      'background-image:' + cs.backgroundImage,
+      'background-size:' + cs.backgroundSize,
+      'background-position:' + cs.backgroundPosition,
+      'background-repeat:' + cs.backgroundRepeat,
+      '-webkit-background-clip:' + cs.webkitBackgroundClip,
+      'background-clip:' + cs.backgroundClip,
+    ].join(';')
+    document.body.appendChild(g)
+    return g
+  }
+
+  const dropGhost = () => {
+    if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost)
+    ghost = null
+  }
+
+  const update = () => {
+    raf = null
+    const nav = navTitle()
+    if (!nav) {
+      dropGhost()
+      return
+    }
+    const name = heroName()
+
+    // 非首页（文章/归档/标签/关于都没有 hero），或窄屏（.VPNav 只在 ≥960px 是
+    // position: fixed，窄屏整条导航随页面滚走，没有固定落点）：交还站名 + 收起替身。
+    // ⚠️ SPA 切页不触发 scroll 事件，这里的兜底不能省：否则残留的 inline opacity
+    // 会把新页站名锁成隐形，那页就永远没有站名了。
+    if (!name || !WIDE.matches) {
+      if (nav.style.opacity) nav.style.opacity = ''
+      dropGhost()
+      return
+    }
+
+    const y = window.scrollY || window.pageYOffset || 0
+    const t = Math.min(Math.max(y / TRIGGER, 0), 1)
+
+    if (t <= 0.0005) {
+      // 回到顶部：撤掉飞行痕迹，把刊名交还给 hero 本体。
+      // ⚠️ 这里**不要**把 name.style.animation 恢复成 ''：animation-name 从 none
+      // 改回 hero-rise 会让 CSS 动画**重新播放一遍**（回到顶部时刊名会再"升起"一次）。
+      // 入场动画早已播完，永久停在 'none' 才是正确状态。
+      name.style.transform = ''
+      name.style.opacity = ''
+      name.style.transformOrigin = ''
+      // ⚠️ 顶部静止时站名必须完全让位给 hero 大字：两者是同一串字
+      //（「牧神的笔记」），同时显示就变成「复制」而不是「移动」。
+      // 这一点靠计算样式是发现不了的，实测截图才看得出来。
+      nav.style.opacity = ''
+      dropGhost()
+      return
+    }
+
+    // ⚠️ 飞行期间原刊名隐身、由替身出面。hero-rise 是 fill:both，动画结束后它的
+    // to 态 opacity 会**一直压过 inline style**（CSS 动画优先级高于 inline），
+    // 必须先把动画置 none，inline 的 opacity:0 才生效。
+    if (name.style.animation !== 'none') name.style.animation = 'none'
+    // ⚠️ 钉成 none，不是清成 ''。㉔ 段给刊名挂了鼠标倾斜的 transform
+    //（由 --mx/--my 算出来），若清成 '' 会让那套 CSS 重新生效 —— 量到的就是
+    // **被旋转之后的外接矩形**，替身起点与落点都会偏几个像素。置 none 锁死成
+    // 布局盒才是准的；反正此刻原刊名已经隐身，它自己怎么变都看不见。
+    name.style.transform = 'none'
+    name.style.opacity = '0'
+
+    if (!ghost) ghost = buildGhost(name)
+
+    // 原刊名不再被施加任何 transform，读到的就是**稳定的未变形矩形**（也不存在
+    // 旧版那个「读到含 transform 的 rect 形成反馈环」的问题）。该 rect 已包含
+    // 页面滚动位移与 .container 的视差 transform，所以 dx/dy 直接算
+    // 「刊名中心 → 导航站名中心」即可，不必再补滚动量。
+    const h = name.getBoundingClientRect()
+    const n = nav.getBoundingClientRect()
+    if (!h.height || !h.width || !n.height) {
+      dropGhost()
+      return
+    }
+
+    const dx = n.left + n.width / 2 - (h.left + h.width / 2)
+    const dy = n.top + n.height / 2 - (h.top + h.height / 2)
+    // 缩放取「导航站名字号 ÷ 刊名字号」。⚠️ 不能用矩形高度比：导航标题容器
+    // 占满整条导航高度（实测 64px），比刊名（54px）还高，会越缩越大（实测 1.17 倍）。
+    const s =
+      parseFloat(getComputedStyle(nav).fontSize) /
+      parseFloat(getComputedStyle(name).fontSize)
+    const e = 1 - Math.pow(1 - t, 3) // easeOutCubic，与站点 cubic-bezier(.22,1,.36,1) 同感
+
+    // 落点前的「交叠段」：替身淡出、导航站名同步淡入 —— 一次交叉溶解完成交接。
+    // 共享元素变形的铁律是**任一时刻只有一个实例可见**；同一串字同框出现两遍
+    // 读起来就是「重影 / 复制」，而不是「移动」。
+    // 窗口刻意压在最后 22%：此时位形已重合到 1px 内（e=0.989），溶解看不出接缝；
+    // 若把窗口提前到 38%（e=0.945，横向还差 5px）就会露出淡淡的双层字。
+    const out = Math.min(Math.max((t - 0.78) / 0.22, 0), 1)
+
+    ghost.style.left = h.left + 'px'
+    ghost.style.top = h.top + 'px'
+    ghost.style.transform = `translate(${dx * e}px, ${dy * e}px) scale(${1 + (s - 1) * e})`
+    ghost.style.opacity = String(1 - out)
+    nav.style.opacity = String(out)
+  }
+
+  const onScroll = () => {
+    if (raf === null) raf = requestAnimationFrame(update)
+  }
+  // 视口一变，刊名的 clamp() 字号就与替身定格时的字号对不上了，必须重建替身
+  const onResize = () => {
+    dropGhost()
+    onScroll()
+  }
+  window.addEventListener('scroll', onScroll, { passive: true })
+  window.addEventListener('resize', onResize)
+  if (WIDE.addEventListener) WIDE.addEventListener('change', onScroll)
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(onScroll)
+  onScroll()
+
+  // enhanceApp 早于布局渲染执行，此刻 hero 还没进 DOM，上面那次 onScroll 拿不到节点。
+  // 若不补一次，首屏停在顶部时就永远不会执行"隐藏导航站名"的分支 →
+  // 顶部会出现「hero 大字 + 导航站名」两个「牧神的笔记」同框。
+  // 这里轮询到 hero 出现为止（正常 1~2 帧，最多约 1s 收手）。
+  let tries = 0
+  const armFly = () => {
+    if (heroName() || ++tries > 60) {
+      onScroll()
+      return
+    }
+    requestAnimationFrame(armFly)
+  }
+  armFly()
+
+  // 切页清场：SPA 导航不触发 scroll 事件，残留的 inline opacity/transform 与替身
+  // 会把新页站名锁在隐形状态。清完再按当前滚动量重算一次（回首页且已滚动时能自愈）。
+  return () => {
+    const nav = navTitle()
+    if (nav) nav.style.opacity = ''
+    const name = heroName()
+    if (name) {
+      // 不恢复 animation（见上面 t<=0 分支的说明）：改回 hero-rise 会重播入场动画。
+      name.style.transform = ''
+      name.style.opacity = ''
+      name.style.transformOrigin = ''
+    }
+    dropGhost()
+    requestAnimationFrame(onScroll)
+  }
+}
+
 export default {
   extends: DefaultTheme,
   Layout: MyLayout,
   enhanceApp({ router }) {
     const rebindHero = setupHeroParallax()
+    const resetHeroPointer = setupHeroPointer()
+    const resetHeroFly = setupHeroFly()
     setupReveal()
     setupScrollProgress()
     setupNavState()
@@ -874,8 +1670,14 @@ export default {
     const arm = () => {
       if (timer) clearInterval(timer)
       let n = 0
+      /* 每一轮要把三件事都做一遍，所以**不能短路**：
+         写 ensureA() || ensureB() 会在 A 成功时直接跳过 B（反之亦然）。
+         用 map 而不是 some/every —— map 天生不短路；三个步骤各自幂等，
+         已完成的会立刻返回 true，所以"全都 true"就是收工条件。 */
+      const steps = [ensureHeroParticles, ensureHeroCover, ensureHeroWordmark, ensureHeroRibbon]
       timer = setInterval(() => {
-        if (ensureHeroParticles() || ++n > 120) {
+        const done = steps.map((f) => f())
+        if (done.every(Boolean) || ++n > 120) {
           clearInterval(timer)
           timer = null
         }
@@ -894,6 +1696,10 @@ export default {
         arm()
         // 旧页留下的选区在新页上会变成一层没来由的遮罩，切页即清掉
         if (resetSpotlight) resetSpotlight()
+        // 飞行的 inline 残留会把新页站名锁成隐形（SPA 切页不触发 scroll），必须清场
+        if (resetHeroFly) resetHeroFly()
+        // 指针变量归零：新页的 hero 从"字放平 + 门紧闭"起步，不继承上一页的倾角与开合度
+        if (resetHeroPointer) resetHeroPointer()
         requestAnimationFrame(() => rebindHero && rebindHero())
       }
     }

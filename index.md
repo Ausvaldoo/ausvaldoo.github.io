@@ -12,6 +12,19 @@ hero:
     - theme: alt
       text: 关于我
       link: /about
+# ① 首帧就给 <html> 打上 .js：CSS 据此隐藏"未拆分的整串刊名"（防冷加载闪大字），
+#   JS 被禁用时 .js 永远不加，整串字照常显示 —— 与 setupReveal 同一降级哲学。
+# ② 封面 preload（审计 major②）：把 270KB 的门图下载提前到 HTML 解析期，
+#   消掉"空门"窗口，hydrate 后 ensureHeroCover 直接命中缓存。
+head:
+  - - script
+    - {}
+    - document.documentElement.classList.add("js")
+  - - link
+    - rel: preload
+      as: image
+      href: /zhihu_cover_panel.jpg
+      fetchpriority: high
 ---
 
 <script setup>
@@ -28,7 +41,7 @@ const lastRowStart = Math.floor((posts.length - 1) / COLS) * COLS
 </div>
 
 <ul class="post-list">
-  <li v-for="(post, i) in posts" :key="post.url" class="post-item" :class="{ 'is-last-row': i >= lastRowStart }">
+  <li v-for="(post, i) in posts" :key="post.url" class="post-item" :class="{ 'is-last-row': i >= lastRowStart }" :style="{ '--reveal-i': i }">
     <div class="post-main">
       <a class="post-title" :href="post.url">{{ post.title }}</a>
       <p v-if="post.excerpt" class="post-excerpt">{{ post.excerpt }}</p>
