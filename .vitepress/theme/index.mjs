@@ -470,9 +470,13 @@ function ensureHeroParticles() {
   return true
 }
 
-/* 封面照片（门的图案来源）。2000×480 的 q86 派生版，272KB；
-   原图 zhihu_cover.jpg 是 1.55MB，只作母版存档、不进页面。 */
-const COVER_SRC = '/zhihu_cover_panel.jpg'
+/* 封面照片（门的图案来源）。2000×480，q82 WebP，187KB。
+   两张原图（母版，不发布、只存档）：
+     _master/zhihu_cover_panel.jpg  271KB —— 本图的 JPG 母版
+     _master/zhihu_cover.jpg        1.59MB —— 站长原始整图，从未用于页面
+   ⚠️ 两张母版都放在 _master/ 而不是 public/：public/ 下的文件会被 VitePress
+      原样拷进 dist，等于把 1.59MB 从未引用的死重发布给每个访客（实测踩过）。 */
+const COVER_SRC = '/zhihu_cover_panel.webp'
 let coverPreloaded = false
 
 /**
@@ -1135,7 +1139,7 @@ function setupViewTransitions(router) {
 
     setDir(dirTo(window.location.pathname, path(to)))
     const src = Array.from(
-      document.querySelectorAll('.post-title, .archive-title, .idx-list a, .idx-tagrow a')
+      document.querySelectorAll('.post-title, .archive-title, .idx-list a, .idx-tagrow a, .fm-title')
     ).find((a) => a.href && path(a.href) === path(to))
     if (src) src.style.setProperty('view-transition-name', 'vt-title')
 

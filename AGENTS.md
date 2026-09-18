@@ -345,16 +345,16 @@ cd /e/04_Tools/zhihu-spider && ./1_crawl.bat     # 等价：python crawl_article
 
 ### Hero「封面两扇门」（2026-09-18）：三条硬约束
 
-左右各一片 `zhihu_cover_panel.jpg`，指针往哪边去、哪边的门朝里开。可调项：
+左右各一片 `zhihu_cover_panel.webp`，指针往哪边去、哪边的门朝里开。可调项：
 
 | 旋钮 | 位置 | 现值 |
 |---|---|---|
 | 中间留白净宽 | `.VPHero { --door-gap }` | `clamp(430px, 41vw, 680px)` |
 | 门高（决定图的比例） | `.VPHero { --door-h }` | `clamp(236px, 24vw, 366px)` |
 | 全开角度 | `.VPHero { --door-max }` | `42deg` |
-| 图片地址 | `.VPHero .cover-door { background-image }` | `/zhihu_cover_panel.jpg` |
+| 图片地址 | `.VPHero .cover-door { background-image }` | `/zhihu_cover_panel.webp` |
 
-图片资产说明：门用的是 `public/zhihu_cover_panel.jpg`（2000×480，q86，**270 KB**），
+图片资产说明：门用的是 `public/zhihu_cover_panel.webp`（2000×480，q82，**187 KB**），
 从站长的原图 `public/zhihu_cover.jpg`（**1.55 MB**）转出来的 —— 同一个画面，只是按
 显示尺寸重新压过。⚠️ 原图现在是**没人引用的孤儿**，却因为在 `public/` 里，
 每轮构建都被原样复制进 `dist/`（即线上一直在白下 1.55 MB）。要换图就改上面那一行。

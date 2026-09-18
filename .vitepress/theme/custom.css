@@ -37,7 +37,7 @@
      它不是遮罩，是「纸从照片里透出来」—— 门打开后露出的正是纸底，
      所以这层纱在开门态与背景同色到看不见，逻辑自洽。
 
-     为什么必须有：封面是高调粉彩插画（zhihu_cover_panel.jpg，2000×480），
+     为什么必须有：封面是高调粉彩插画（zhihu_cover_panel.webp，2000×480），
      文字区亮度跨度 L 0.021→0.998。实测（_blog-probe/probe_veil_alpha.py）：
        墨字裸压  最暗处 1.34:1（.tagline）/ 1.44:1（.text）/ 1.83:1（.name）
        白字裸压  最亮处 1.00:1 —— 白字在这张图上**直接消失**
@@ -420,8 +420,8 @@ html.dark body::after {
 /* 按钮：直角、等宽字 —— 印刷品的克制 */
 .VPButton {
   border-radius: 2px !important;
-  transition: background-color 0.25s ease, color 0.25s ease,
-    border-color 0.25s ease;
+  transition: background-color 0.25s cubic-bezier(0.22, 1, 0.36, 1), color 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .VPHero .actions .VPButton.brand {
   background-color: var(--ink);
@@ -518,7 +518,7 @@ html.has-reveal .post-item,
 html.has-reveal .archive-group {
   opacity: 0;
   transform: translateY(22px);   /* 原 14：读者要「有动效」，上浮更明显 */
-  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 /* 首屏逐篇错峰：加载时像浪一样涌上来。
    只限前 8 篇 —— 深滚项若也带 delay，滚到时会干等，反而像卡住。
@@ -615,7 +615,7 @@ html.has-reveal .archive-group.revealed {
    另：`.VPNav` 只在 ≥960px 才是 position: fixed；窄屏是 relative，整条导航随页面滚走，
    窄屏下压根不存在「滚动态」。这是 VitePress 的移动端设计，不要改。 */
 .VPNavBar {
-  transition: border-color 0.3s ease;
+  transition: border-color 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 html .VPNav.is-scrolled .VPNavBar,
 html .VPNav.is-scrolled .VPNavBar.has-sidebar {
@@ -675,8 +675,8 @@ html.js .VPHero .name:not(:has(.wm-major)) {
 
 /* ---------- ⑬ 文章卡片：悬停微抬升 + 柔影 + 标题下划线描画 ---------- */
 .post-item {
-  transition: background-color 0.25s ease, transform 0.3s ease,
-    box-shadow 0.3s ease;
+  transition: background-color 0.25s cubic-bezier(0.22, 1, 0.36, 1), transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .post-item:hover {
   transform: translateY(-3px);
@@ -688,7 +688,7 @@ html.js .VPHero .name:not(:has(.wm-major)) {
   background-position: 0 100%;
   background-size: 0 1.5px;
   transition: background-size 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-    color 0.25s ease;
+    color 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .post-item:hover .post-title {
   background-size: 100% 1.5px;
@@ -715,8 +715,8 @@ html.js .VPHero .name:not(:has(.wm-major)) {
   opacity: 0;
   visibility: hidden;
   transform: translateY(10px);
-  transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s,
-    border-color 0.25s ease;
+  transition: opacity 0.3s cubic-bezier(0.22, 1, 0.36, 1), transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.3s,
+    border-color 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .to-top.visible {
   opacity: 1;
@@ -775,7 +775,7 @@ html {
 
 /* ---------- ⑯ 正文图片悬停微缩放 ---------- */
 .vp-doc img {
-  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), filter 0.5s ease;
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), filter 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .vp-doc img:hover {
   transform: scale(1.02);
@@ -826,7 +826,7 @@ html {
 .pt-cat,
 .pt-tag {
   text-decoration: none;
-  transition: color 0.2s ease;
+  transition: color 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .pt-cat {
   color: var(--vp-c-brand-1);
@@ -1238,9 +1238,9 @@ body:has(> .VPLocalSearchBox) {
   display: block;
   object-fit: cover;           /* 等比铺满、无变形（理由见上） */
   object-position: center center;
-  /* src 由 ensureHeroCover 写：'/zhihu_cover_panel.jpg'（2000×480, q86, 272KB） */
+  /* src 由 ensureHeroCover 写：'/zhihu_cover_panel.webp'（2000×480, q82, 187KB） */
   opacity: 0;
-  transition: opacity 0.55s ease;
+  transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .VPHero .cover-door__img.is-loaded { opacity: 1; }
 .VPHero .cover-door--l .cover-door__img { left: 0; }
@@ -1280,7 +1280,7 @@ body:has(> .VPLocalSearchBox) {
 .VPHero .cover-door.dissolving {
   transform: none !important;
   overflow: visible !important;
-  transition: transform 0.25s ease;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .VPHero .cover-door .ribbon {
   position: absolute;
@@ -1292,7 +1292,7 @@ body:has(> .VPLocalSearchBox) {
   will-change: transform, opacity;
   transition:
     transform 0.95s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.95s ease;
+    opacity 0.95s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .VPHero .cover-door.dissolving .ribbon {
   transform: translate3d(var(--rx, 0), var(--ry, 0), 0) rotate(var(--rr, 0deg)) scaleX(0.05);
