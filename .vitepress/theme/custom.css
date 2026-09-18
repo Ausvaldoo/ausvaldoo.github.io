@@ -470,7 +470,8 @@ html.dark body::after {
    VitePress 的 .VPNav 只在 ≥960px 才是 position: fixed，窄屏整条导航随页面滚走，
    没有固定落点、飞行根本不跑 —— 若这里仍把站名藏掉，窄屏首页就永远没有站名。 */
 @media (prefers-reduced-motion: no-preference) and (min-width: 960px) {
-  html:has(.VPHero) .VPNavBarTitle .title span {
+  html:has(.VPHero) .VPNavBarTitle .title span,
+  html:has(.fm-masthead) .VPNavBarTitle .title span {
     opacity: 0;
   }
 }
@@ -515,7 +516,8 @@ html.dark body::after {
 
 /* ---------- ⑥ 滚动渐显（JS 加 has-reveal 后才生效，无 JS 不藏内容） ---------- */
 html.has-reveal .post-item,
-html.has-reveal .archive-group {
+html.has-reveal .archive-group,
+html.has-reveal .fm-toc-item {
   opacity: 0;
   transform: translateY(22px);   /* 原 14：读者要「有动效」，上浮更明显 */
   transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
@@ -527,7 +529,8 @@ html.has-reveal .post-item:nth-child(-n + 8) {
   transition-delay: calc(var(--reveal-i, 0) * 80ms);
 }
 html.has-reveal .post-item.revealed,
-html.has-reveal .archive-group.revealed {
+html.has-reveal .archive-group.revealed,
+html.has-reveal .fm-toc-item.revealed {
   opacity: 1;
   transform: none;
 }
@@ -541,7 +544,8 @@ html.has-reveal .archive-group.revealed {
     transform: none !important;
   }
   html.has-reveal .post-item,
-  html.has-reveal .archive-group {
+  html.has-reveal .archive-group,
+  html.has-reveal .fm-toc-item {
     opacity: 1;
     transform: none;
     transition: none;

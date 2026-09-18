@@ -7,43 +7,45 @@ title: 牧神的笔记
 import { data as posts } from './posts.data.js'
 </script>
 
-<!-- ① 刊头 masthead：小字排版标志，不是 126px 大字 -->
+<!-- ① 刊头 masthead：首页顶部唯一的「牧神的笔记」；
+     滚动时由 setupHeroFly 飞进导航栏（导航站名由 CSS 守卫隐藏、飞行中交叉溶解交接） -->
 <header class="fm-masthead">
   <span class="fm-mast-title">牧神的笔记</span>
   <span class="fm-mast-sub">INVEST · AUTOMATION · ENGINEERING</span>
 </header>
 
-<!-- ② 封面宣言 statement：一句巨型衬线话，替代旧 hero -->
-<section class="fm-statement">
-  <span class="fm-kicker">关于这本笔记</span>
-  <h1 class="fm-stmt">把时间写进复利<br>把工程写成笔记</h1>
-</section>
-
-<!-- ③ 目录 index：编号列表，不是卡片网格 -->
-<section class="fm-toc">
-  <div class="fm-toc-head">
-    <h2 class="fm-toc-title">最新文章</h2>
-    <span class="fm-toc-count">({{ posts.length }})</span>
-    <a class="fm-all" href="/posts/">全部文章 →</a>
+<!-- ② 封面 + 目录：左栏宣言钉住（sticky），右栏目录先滚；
+     目录滚完，sticky 释放，两侧一起被带走 —— 站长点名的分层节奏 -->
+<section class="fm-cover">
+  <div class="fm-left">
+    <span class="fm-kicker">兰波 · RIMBAUD</span>
+    <h1 class="fm-stmt">夏日蓝色的黄昏里，<br>我将走上幽径，<br>不顾麦茎刺肤，<br>漫步地踏青</h1>
   </div>
-  <ol class="fm-toc-list">
-    <li v-for="(post, i) in posts" :key="post.url" class="fm-toc-item">
-      <div class="fm-row">
-        <span class="fm-no">{{ String(i + 1).padStart(2, '0') }}</span>
-        <a :href="post.url" class="fm-title">{{ post.title }}</a>
-        <span class="fm-meta">{{ post.date }}<em v-if="post.category"> · {{ post.category }}</em></span>
-      </div>
-    </li>
-  </ol>
+  <div class="fm-right">
+    <div class="fm-toc-head">
+      <h2 class="fm-toc-title">最新文章</h2>
+      <span class="fm-toc-count">({{ posts.length }})</span>
+      <a class="fm-all" href="/posts/">全部文章 →</a>
+    </div>
+    <ol class="fm-toc-list">
+      <li v-for="(post, i) in posts" :key="post.url" class="fm-toc-item" :style="{ '--reveal-i': i }">
+        <div class="fm-row">
+          <span class="fm-no">{{ String(i + 1).padStart(2, '0') }}</span>
+          <a :href="post.url" class="fm-title">{{ post.title }}</a>
+          <span class="fm-meta">{{ post.date }}<em v-if="post.category"> · {{ post.category }}</em></span>
+        </div>
+      </li>
+    </ol>
+  </div>
 </section>
 
-<!-- ④ 系列横带：sticky 打断单调（结构占位，动效层再钉住） -->
+<!-- ③ 系列横带 -->
 <a class="fm-series" href="/series">
   <span class="fm-series-label">系列专题</span>
   <span class="fm-series-hint">横向滑动浏览 →</span>
 </a>
 
-<!-- ⑤ 主题词 marquee：横向缓移，制造反节奏 -->
+<!-- ④ 主题词 marquee -->
 <div class="fm-marquee" aria-hidden="true">
   <div class="fm-marquee-track">
     <span>投资 · 工业自动化 · 工程实践 · 阅读 · 设计 ·&nbsp;</span>
@@ -51,16 +53,16 @@ import { data as posts } from './posts.data.js'
   </div>
 </div>
 
-<!-- ⑥ 封底 colophon：一句签名 -->
+<!-- ⑤ 封底：站长的签名（兰波） -->
 <footer class="fm-colophon">
-  <p>把复杂的事，写成能读懂的字。</p>
+  <p>不过是温柔的疯狂</p>
+  <span>—— 兰波</span>
 </footer>
 
 <style scoped>
 /* ============ 杂志封面 + 目录 ============
    ⚠️ 必须 scoped：裸 <style> 的 .fm-title (0,1,0) 干不过 VitePress 的
-   .vp-doc a (0,1,1)，实测标题被压成"rust 下划线"、ol 序号与编号叠显。
-   scoped 给每条规则补上 [data-v] 属性，特异性 (0,2,0) 反超。 */
+   .vp-doc a (0,1,1)，实测标题被压成"rust 下划线"、ol 序号与编号叠显。 */
 
 .fm-masthead {
   display: flex;
@@ -85,9 +87,18 @@ import { data as posts } from './posts.data.js'
   white-space: nowrap;
 }
 
-/* ② 宣言 */
-.fm-statement {
-  margin: 64px 0 72px;
+/* ② 左钉右滚的分栏 */
+.fm-cover {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 24px 56px;
+  align-items: start;
+  margin-top: 56px;
+}
+/* 左栏宣言：钉在视口内，直到右栏目录滚完、外层高度耗尽后一起被带走 */
+.fm-left {
+  position: sticky;
+  top: 96px;   /* 导航 64px + 余量 */
 }
 .fm-kicker {
   display: inline-flex;
@@ -107,17 +118,14 @@ import { data as posts } from './posts.data.js'
 .fm-stmt {
   margin: 24px 0 0;
   font-family: var(--font-serif);
-  font-size: clamp(40px, 6.2vw, 76px);
+  font-size: clamp(28px, 3.4vw, 46px);
   font-weight: 700;
-  line-height: 1.12;
+  line-height: 1.42;
   letter-spacing: 0.01em;
   color: var(--vp-c-text-1);
 }
 
-/* ③ 目录 */
-.fm-toc {
-  margin-top: 16px;
-}
+/* 目录 */
 .fm-toc-head {
   display: flex;
   align-items: baseline;
@@ -186,7 +194,7 @@ import { data as posts } from './posts.data.js'
 .fm-row:hover .fm-title { color: var(--rust); }
 .fm-row:hover { background: var(--vp-c-bg-soft); }
 
-/* ④ 系列横带 */
+/* ③ 系列横带 */
 .fm-series {
   display: flex;
   align-items: center;
@@ -210,7 +218,7 @@ import { data as posts } from './posts.data.js'
 }
 .fm-series:hover .fm-series-label { color: var(--rust); }
 
-/* ⑤ marquee */
+/* ④ marquee */
 .fm-marquee {
   overflow: hidden;
   white-space: nowrap;
@@ -229,7 +237,7 @@ import { data as posts } from './posts.data.js'
   to   { transform: translateX(-50%); }
 }
 
-/* ⑥ 封底 */
+/* ⑤ 封底 */
 .fm-colophon {
   margin-top: 72px;
   padding: 32px 0 16px;
@@ -239,15 +247,27 @@ import { data as posts } from './posts.data.js'
 .fm-colophon p {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: 20px;
   font-style: italic;
-  color: var(--vp-c-text-2);
+  color: var(--vp-c-text-1);
+}
+.fm-colophon span {
+  display: block;
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--vp-c-text-3);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .fm-marquee-track { animation: none; }
 }
-@media (max-width: 640px) {
+@media (max-width: 880px) {
+  /* 窄屏退回单列：宣言在上（不钉住），目录在下 */
+  .fm-cover { grid-template-columns: minmax(0, 1fr); }
+  .fm-left { position: static; }
+  .fm-stmt { font-size: clamp(26px, 7vw, 38px); }
   .fm-row { grid-template-columns: 34px minmax(0, 1fr); }
   .fm-meta { grid-column: 2; }
   .fm-mast-sub { display: none; }

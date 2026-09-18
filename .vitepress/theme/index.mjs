@@ -1,5 +1,6 @@
 import DefaultTheme from 'vitepress/theme'
 import MyLayout from './MyLayout.vue'
+import Lenis from './vendor/lenis.mjs'
 import './custom.css'
 
 /**
@@ -81,7 +82,7 @@ function setupReveal() {
     { threshold: 0.08 }
   )
 
-  const SEL = '.post-item:not(.revealed), .archive-group:not(.revealed)'
+  const SEL = '.post-item:not(.revealed), .archive-group:not(.revealed), .fm-toc-item:not(.revealed)'
   let scheduled = false
 
   const handle = () => {
@@ -1424,7 +1425,7 @@ function setupHeroFly() {
   let raf = null
   let ghost = null // 挂在 body 上的固定定位替身
 
-  const heroName = () => document.querySelector('.VPHero .name')
+  const heroName = () => document.querySelector('.fm-masthead .fm-mast-title')
   // ⚠️ 落点必须是**文字 span**，不能取 `.VPNavBarTitle .title`。
   // 实测那个 .title 是同时包着头像与站名的 <a>：
   //   <a class="title"><img class="VPImage logo" src="/zhihu_avatar.jpg"><span>牧神的笔记</span></a>
@@ -1668,6 +1669,20 @@ export default {
     const resetSpotlight = setupSelectionSpotlight()
     // SSR（构建渲染页）时没有 window/document，直接返回
     if (typeof window === 'undefined') return
+
+    // Lenis 顺滑滚动（站长 2026-09-19 点名要的效果；vendored 于 lenis@1.3.26，33KB ESM）。
+    // - reduced-motion 不启用；触屏默认原生滚动（Lenis 的 syncTouch 默认 false）
+    // - SPA 切页后 VitePress 会 native scrollTo(0)，Lenis 的内部状态必须 immediate 同步，
+    //   否则下一次滚轮会从旧位置「飞」回顶部 —— 实测这种跳变比没有顺滑滚动更糟
+    let lenis = null
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      lenis = new Lenis({ lerp: 0.1 })
+      const raf = (t) => {
+        lenis.raf(t)
+        requestAnimationFrame(raf)
+      }
+      requestAnimationFrame(raf)
+    }
     // 自愈轮询：window load 可能被慢速外链字体无限推迟，hydration 也可能
     // 把手动插入的节点摘掉——轮询到成功为止，最多 60s 后自行收手
     let timer = null
@@ -1698,6 +1713,8 @@ export default {
     if (router) {
       router.onAfterRouteChange = () => {
         arm()
+        // Lenis 内部状态与原生滚动对齐（见上方注释，immediate 防回飞）
+        if (lenis) lenis.scrollTo(0, { immediate: true, force: true })
         // 旧页留下的选区在新页上会变成一层没来由的遮罩，切页即清掉
         if (resetSpotlight) resetSpotlight()
         // 飞行的 inline 残留会把新页站名锁成隐形（SPA 切页不触发 scroll），必须清场
