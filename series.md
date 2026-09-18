@@ -109,6 +109,9 @@ const groups = Object.entries(map).sort(byCount)
   line-height: 1.6;
   color: var(--vp-c-text-1);
   text-decoration: none;
+  /* 干掉 VP 默认的 color .25s 过渡：它让文字在黑→橘间渐变、
+     下划线却瞬时就位，视觉上是"先黑再橘"两段式。悬停即达才干净。 */
+  transition: none;
 }
 .ser-list a:hover {
   color: var(--rust);

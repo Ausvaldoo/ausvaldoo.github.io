@@ -34,7 +34,11 @@ const tags = computed(() =>
       <SeriesPager />
       <div v-if="category || tags.length" class="post-tags">
         <a v-if="category" class="pt-cat" :href="`/tags#cat-${category}`">{{ category }}</a>
-        <a v-for="t in tags" :key="t" class="pt-tag" :href="`/tags#tag-${t}`">{{ t }}</a>
+        <!-- 分隔点放在外层 wrapper 的 ::before 上：若生成在 <a> 自身的伪元素里，
+             悬停时 text-decoration: underline 会连点一起划线（实测踩过） -->
+        <span v-for="t in tags" :key="t" class="pt-item">
+          <a class="pt-tag" :href="`/tags#tag-${t}`">{{ t }}</a>
+        </span>
       </div>
     </template>
   </Layout>

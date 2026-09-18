@@ -534,6 +534,20 @@ html.has-reveal .fm-toc-item.revealed {
   opacity: 1;
   transform: none;
 }
+/* 目录摘要比行体慢 0.12s 浮出：行先落定，字再浮起来（站长的"介绍浮出来"）。
+   ⚠️ transition 必须带上 max-height —— 这条 (0,3,2) 会盖过 scoped 里
+   .fm-excerpt 的 transition，漏掉它悬停展开就变成硬切。 */
+html.has-reveal .fm-toc-item .fm-excerpt {
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.12s,
+              transform 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.12s,
+              max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+html.has-reveal .fm-toc-item.revealed .fm-excerpt {
+  opacity: 1;
+  transform: none;
+}
 
 /* ---------- ⑦ 减弱动效：全部动画一刀切 ---------- */
 @media (prefers-reduced-motion: reduce) {
@@ -546,6 +560,11 @@ html.has-reveal .fm-toc-item.revealed {
   html.has-reveal .post-item,
   html.has-reveal .archive-group,
   html.has-reveal .fm-toc-item {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  html.has-reveal .fm-toc-item .fm-excerpt {
     opacity: 1;
     transform: none;
     transition: none;
@@ -844,9 +863,11 @@ html {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-/* 词与词之间用细点分隔，比留空隙更像"一行元数据" */
-.pt-tag + .pt-tag::before,
-.pt-cat + .pt-tag::before {
+/* 词与词之间用细点分隔，比留空隙更像"一行元数据"。
+   点必须生成在外层 .pt-item 的伪元素上（而非 <a> 自身），
+   否则悬停下划线会连点一起划。 */
+.pt-item + .pt-item::before,
+.pt-cat + .pt-item::before {
   content: '·';
   margin: 0 8px;
   color: var(--vp-c-text-3);

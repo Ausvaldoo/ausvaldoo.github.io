@@ -76,12 +76,9 @@ export default defineConfig({
     returnToTopLabel: '回到顶部',
     darkModeSwitchLabel: '外观',
     sidebarMenuLabel: '目录',
-    externalLinkIcon: true,
-
-    footer: {
-      message: '牧神的笔记',
-      copyright: 'Copyright © 2026 牧神'
-    }
+    externalLinkIcon: true
+    // 默认 footer 已移除：首页有 fm-colophon 封底（兰波签名 + 版权行），
+    // 全局灰字 footer 是第三处「牧神的笔记」，纯重复。
   },
 
   head: [
