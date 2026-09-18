@@ -29,6 +29,7 @@ const tagEntries = Object.entries(tagMap).sort(
 )
 // 行数随标签量自适应（≥18 三行、≥8 两行、否则一行）——不为凑三行硬拆
 const MQ_N = tagEntries.length >= 18 ? 3 : tagEntries.length >= 8 ? 2 : 1
+const tagCount = tagEntries.length
 const mqRows = Array.from({ length: MQ_N }, () => [])
 tagEntries.forEach((t, i) => mqRows[i % MQ_N].push(t))
 // 内容重复 6 次做无缝循环：动画位移 -50%，首半 = 3 组内容，宽视口也不露缝
@@ -92,6 +93,10 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 
 <!-- ⑤ 主题词带：三条错速滚动（中排反向），悬停暂停；每个词可点进 /tags 对应锚点 -->
 <section v-if="mqTracks[0].length" class="fm-mq" aria-label="主题词">
+  <div class="fm-mq-head">
+    <h2 class="fm-mq-title">主题词</h2>
+    <span class="fm-mq-count">({{ tagCount }})</span>
+  </div>
   <div v-for="(row, r) in mqTracks" :key="r" class="fm-mq-row" :class="`is-${r}`">
     <div class="fm-mq-track">
       <a v-for="(t, i) in row" :key="i" class="fm-mq-tag" :href="`/tags#tag-${t[0]}`">
@@ -334,12 +339,31 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 .fm-series-card:hover .sc-name { color: var(--rust); }
 
 /* ④ 封底 */
-/* ⑤ 主题词带：三条错速滚动，边缘渐隐，悬停暂停 */
+/* ⑤ 主题词带：节头与系列同语法，三行错速滚动，边缘渐隐，悬停暂停 */
 .fm-mq {
-  margin-top: 72px;
+  margin-top: 64px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.fm-mq-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.fm-mq-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--vp-c-text-1);
+}
+.fm-mq-count {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  color: var(--rust);
 }
 .fm-mq-row {
   overflow: hidden;
