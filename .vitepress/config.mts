@@ -76,12 +76,7 @@ export default defineConfig({
     returnToTopLabel: '回到顶部',
     darkModeSwitchLabel: '外观',
     sidebarMenuLabel: '目录',
-    externalLinkIcon: true,
-
-    footer: {
-      message: '牧神的笔记',
-      copyright: 'Copyright © 2026 牧神'
-    }
+    externalLinkIcon: true
   },
 
   head: [

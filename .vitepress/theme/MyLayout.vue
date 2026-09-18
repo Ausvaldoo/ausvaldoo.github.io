@@ -5,6 +5,7 @@ import { computed } from 'vue'
 import ViewCount from './ViewCount.vue'
 import SeriesNav from './SeriesNav.vue'
 import SeriesPager from './SeriesPager.vue'
+import BlogFooter from './BlogFooter.vue'
 
 const { Layout } = DefaultTheme
 const { frontmatter } = useData()
@@ -37,5 +38,10 @@ const tags = computed(() =>
         <a v-for="t in tags" :key="t" class="pt-tag" :href="`/tags#tag-${t}`">{{ t }}</a>
       </div>
     </template>
+
   </Layout>
+  <!-- 页脚：colophon 落款式。注意：当前 VitePress 版本没有 footer-* 插槽
+       （page-bottom 只挂在 VPPage，首页不渲染），故直接排在 Layout 之后，
+       并在 config.mts 移除 themeConfig.footer 让默认 VPFooter 不再出现。 -->
+  <BlogFooter />
 </template>
