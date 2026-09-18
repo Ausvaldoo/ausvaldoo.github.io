@@ -21,7 +21,7 @@ const seriesGroups = Object.entries(map).sort(
   (a, b) => b[1].length - a[1].length || String(a[0]).localeCompare(String(b[0]), 'zh')
 )
 
-// 标签倒排索引 → 三条错速滚动的主题词带。词词是真链接（/tags#tag-名）。
+// 标签倒排索引 → 三条错速滚动的标签词带。词词是真链接（/tags#tag-名）。
 const tagMap = {}
 for (const p of posts) for (const t of p.tags) tagMap[t] = (tagMap[t] || 0) + 1
 const tagEntries = Object.entries(tagMap).sort(
@@ -91,10 +91,10 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
   </div>
 </section>
 
-<!-- ⑤ 主题词带：三条错速滚动（中排反向），悬停暂停；每个词可点进 /tags 对应锚点 -->
-<section v-if="mqTracks[0].length" class="fm-mq" aria-label="主题词">
+<!-- ⑤ 标签词带：三条错速滚动（中排反向），悬停暂停；每个词可点进 /tags 对应锚点 -->
+<section v-if="mqTracks[0].length" class="fm-mq" aria-label="标签">
   <div class="fm-mq-head">
-    <h2 class="fm-mq-title">主题词</h2>
+    <h2 class="fm-mq-title">标签</h2>
     <span class="fm-mq-count">({{ tagCount }})</span>
   </div>
   <div v-for="(row, r) in mqTracks" :key="r" class="fm-mq-row" :class="`is-${r}`">
@@ -339,7 +339,7 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 .fm-series-card:hover .sc-name { color: var(--rust); }
 
 /* ④ 封底 */
-/* ⑤ 主题词带：节头与系列同语法，三行错速滚动，边缘渐隐，悬停暂停 */
+/* ⑤ 标签词带：节头与系列同语法，三行错速滚动，边缘渐隐，悬停暂停 */
 .fm-mq {
   margin-top: 64px;
   display: flex;
