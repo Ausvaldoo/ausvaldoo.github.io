@@ -26,7 +26,11 @@ export default defineConfig({
     'tools/**',
     // 交接文档：给 AI 和未来的自己看，不对外发布
     'AGENTS.md',
-    'CLAUDE.md'
+    'CLAUDE.md',
+    // 项目记忆目录：已在 .gitignore 里挡住提交，这里再挡一次构建。
+    // 因为 srcDir 是 `.`，任何 .md 都会变成网页 —— 万一被人 force-add 进来，
+    // 没有这条就会被构建成页面发到公网。点开头的目录不会被自动排除（`.obsidian/**` 同理）。
+    '.workbuddy/**'
   ],
 
   themeConfig: {

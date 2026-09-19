@@ -376,6 +376,10 @@ cd /e/04_Tools/zhihu-spider && ./1_crawl.bat     # 等价：python crawl_article
 2. **不引入任何需要实名的国内服务**（腾讯云、阿里云等）。阅读量目前用「不蒜子」，它只返回一个整数，不收 IP、不收身份。
 3. 不上**评论功能** —— 访客产生的内容会带来不可控的责任。
 4. `tools/` 已在 `srcExclude`，不会被发布。新增内部脚本/文档同样要加进去。
+   ⚠️ **新增任何"内部目录"要堵两道门**（2026-09-19）：① `.gitignore` 挡提交；② `srcExclude` 挡构建。
+   因为 `srcDir` 是 `.`，**点开头的目录不会被自动排除** —— 现有的 `.obsidian/**`、`.workbuddy/**`
+   都是靠手写进去的。只挡提交的后果：万一被 `git add -f`，里面的 `.md` 会**被构建成页面发到公网**。
+   发布脚本 `PublishBlog.bat` 是 `git add -A`，所以第 ① 道门尤其不能漏。
 5. ⚠️ **`.gitignore` 里有 `/Pasted image *.png`** —— Obsidian 粘贴图片会落在仓库根目录且常无引用，不要顺手 `git add -A` 提交上去。
 
 ---

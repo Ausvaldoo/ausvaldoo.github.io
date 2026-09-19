@@ -18,6 +18,10 @@ dist_old_*/
 # 要正式用图，请把文件放进 public/images/ 再用 ![](/images/xxx.png) 引用。
 /Pasted image *.png
 
+# AI 协作产生的项目记忆（.workbuddy/memory/*.md）。
+# 里面是内部判断与决策过程，而这是公开仓库 —— 发布命令是 `git add -A`，不挡住会被整个提交上去。
+.workbuddy/
+
 # 系统杂项
 Thumbs.db
 .DS_Store
