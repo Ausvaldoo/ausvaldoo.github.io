@@ -142,6 +142,15 @@ seriesOrder: 2            # 这一篇是第几篇
 **不要试图靠文件命名、目录结构或发布时间来推断系列** —— 顺序只认 `seriesOrder`
 （同一天发的多篇分不出先后）。没写 `series` 的文章完全不受影响。
 
+⚠️ **`seriesOrder` 可以是 0**（2026-09-19 修掉的真 bug）：标题写作 00/01/02/03 的系列，
+序号就该填 0 起。曾有 `order: Number(x) || 9999` 的写法 —— `Number(0)` 得 0，
+而 **0 是 falsy**，被兜底成 9999，于是 00 那篇被排到末尾，系列页显示成
+`01 → 02 → 03 → 00`。现已改为显式判空的 `parseOrder()`，只兜
+`undefined/null/''/非数字`，**0 保留为合法序号**。
+
+> 通用教训：`||` 兜底只对 `undefined/null/''` 安全。取值域一旦包含 0
+> （**序号、金额、计数、左偏移、数组下标**），必须显式判空。这类错误静默无声。
+
 加完之后这三处**全自动**出现，不需要改任何代码：
 
 | 位置 | 内容 | 实现 |
@@ -244,6 +253,23 @@ Edge profile 目录的 `shutil.rmtree(PROF)`（实测 925 个文件）同样被�
 （日志尾部出现 `⚠️ Sandbox bypassed (escalation-approved)`）。结果是好的，
 但那要走一次人工确认，属于白费互动。**先加环境变量，别依赖升级。**
 
+⚠️ **2026-09-19 补充：加了阈值之后，可能改报另一个错**：
+
+```
+[safe-delete] 操作失败: spawnSync ...genie-trash\win32-x64.exe ETIMEDOUT
+    at emptyDir (...vite/dist/node/chunks/dep-*.js)
+```
+
+这是**本机回收站在 E 盘不可用**（早先的形态是 `Some operations were aborted`）——
+阈值放宽了，文件不再被「数量」拦，但送去回收站这一步本身就超时。
+**这不是代码问题，也不是配置问题。**
+
+处置原则：**不要为了让它跑起来去关掉安全机制**（`CODEBUDDY_SAFE_DELETE_ENABLED=0`
+是绕过，不是修复）。本地构建只是"提前看一眼"，**CI 跑在干净容器里没有这道 shim** ——
+直接 `git push` 让 Actions 构建即可，两分钟就有权威结果。真要本地出产物时，
+可以 `mv dist _dist_old` 把旧产物挪开（目标目录不存在就不会触发清空），
+构建完再把这个临时目录移出仓库（`rm` 同样会被回收站问题挡住，`mv` 到 `$TEMP` 可行）。
+
 
 ### 4.1 从知乎同步新文章（2026-09-12 跑通）
 
@@ -261,6 +287,31 @@ cd /e/04_Tools/zhihu-spider && ./1_crawl.bat     # 等价：python crawl_article
 # 3) 为每篇新文章填 MANIFEST（见下），再导入
 "C:/Users/Ausva/.workbuddy/binaries/python/envs/default/Scripts/python.exe" zhihu_to_vitepress.py --import
 ```
+
+**站长改了「已经同步过的旧文」时，用 `--update`（2026-09-19 新增）**：
+
+```bash
+# 先预览，**必须带 --only** 限定范围
+"C:/Users/Ausva/.workbuddy/binaries/python/envs/default/Scripts/python.exe" \
+    zhihu_to_vitepress.py --update --dry-run --only slug-a,slug-b
+# 确认无误后去掉 --dry-run 执行
+```
+
+`--import` 与 `--update` 是**互补的一对**：前者只碰「博客里还没有的」，后者只碰
+「博客里已有且 MANIFEST 登记过 slug 的」。判定依据是 `posts/*-<slug>.md` 是否存在。
+
+三条硬规矩：
+
+1. **`--only` 不是可选的**。不加会把 MANIFEST 里**全部**文章重写一遍（实测 24 篇），
+   把不在本次同步范围内的文章也刷成「抓取时的样子」。
+2. **frontmatter 逐字保留，只替换正文**。`categories`/`tags`/`series`/`seriesOrder`
+   全是人工决定的（脚本不生成 `series` 系），重写会**不可恢复地冲掉**。
+   文件名也不动 —— slug 变了会打断外链与搜索引擎收录。
+3. **换旧文之前先做三方比对**，确认博客正文是从抓取来的、而不是手工润色过的：
+   比 `博客 vs 上一轮抓取 vs 本轮抓取`。若博客 == 上一轮抓取，说明没被手改，
+   差异全来自知乎侧，替换安全；若三者都不同，**先问站长**，别直接覆盖。
+
+顺带：`--update` 会跳过「与知乎当前版逐字相同」的文章，不产生无意义的 diff。
 
 **MANIFEST 故意默认留空**，`--import` 在它为空时**拒绝写入**。因为「归类」是作者的分类学，
 不能让脚本瞎猜 —— **新文章要问站长归哪个分类**（标签可以自己从词汇表挑）。
