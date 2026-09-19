@@ -3,6 +3,17 @@ import MyLayout from './MyLayout.vue'
 import Lenis from './vendor/lenis.mjs'
 import './custom.css'
 
+/* 模块级状态：记录「诗句是否已经升起过」。
+   为什么不用 document.documentElement.dataset：
+     · dataset 挂在 DOM 上，任何重建 <html> 的路径（整页重载）都会丢；
+     · 而本函数是 enhanceApp 时**闭包捕获一次**的，模块级变量与它同生命周期，
+       语义更准确 —— 「这个 JS 实例已经负责过升起」。
+   2026-09-19 实测（headless Edge，SPA 内「首页 → 点进文章 → 点回首页」）：
+     同一文档内返回首页时 fm-line-in 不再出现、诗句 y 恒为 0（直接可见），
+     守卫生效；只有整页重载（刷新 / 直接贴 URL 进入）才重新播一次 —— 这正是
+     用户要的「首次进入，或者是刷新的一瞬间」。 */
+let poemRisen = false
+
 /**
  * 首页 Hero 视差：
  * 滚动时把 window.scrollY（clamp 到 [0, hero高度]）写入 .VPHero 的
@@ -112,6 +123,105 @@ function setupReveal() {
   })
   mo.observe(document.body, { childList: true, subtree: true })
   window.addEventListener('load', handle)
+}
+
+/**
+ * 首页诗句逐行升起（2026-09-19 站长指定）。
+ *
+ * 与 setupHeroFly 的分工：
+ *   - setupHeroFly 是**滚动触发**的（刊名飞进导航栏），与本次无关；
+ *   - 本函数是**首屏加载触发**的，从地平线逐行升起。
+ *
+ * ⚠️ 与 View Transitions 的互斥（这是设计里最容易搞错的地方）：
+ *   从文章页返回首页时，ViewTransitions 会让**整页从左侧飞入**（vt-back）。
+ *   如果此时再叠一层逐行升起，就是「页面在横移、文字在纵升」两套空间隐喻打架。
+ *   所以**已经播过一次就不重播**（见下方的 poemRisen 模块级守卫）。
+ *
+ * 关于「升起」为什么必须两层 span：
+ *   外层 overflow:hidden 做掩码，内层 transform 做位移。如果只有一层，
+ *   位移会把掩码一起带走，看到的是整行平移而非「从地平线下钻出来」。
+ */
+function setupPoemRise() {
+  if (typeof window === 'undefined') return
+
+  const root = document.documentElement
+
+  /* prefers-reduced-motion：**不 return**，而是直接标 done。
+     为什么不能直接 return：.fm-line > span 的基础态是 translateY(100%) + opacity:0
+     （隐藏），CSS 的 reduce 媒体查询会覆盖成可见，但那是纯 CSS 保证；
+     而 SPA 从文章页切回首页时诗句 DOM 是**新建**的，如果我们什么都不做，
+     就完全依赖 CSS 媒体查询生效 —— 一旦有偏差（例如用户中途改系统设置、
+     或样式表加载顺序问题），诗句就是一片空白且无人兜底。
+     所以这里照样返回 play()，由它把 done 类挂上，用**显式终态**兜住可见性。 */
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  /**
+   * 播一次升起。
+   *
+   * 两种「找不到 .fm-line」的情形要区分，处理方式相反：
+   *   a) 当前页不是首页（文章页/归档页）→ 什么都不做，等下一次调用；
+   *   b) 是首页但 DOM 还没渲染完 → 短暂等待后重试。
+   * 分不清时就当作 (b) 重试几次，超时后再按 (a) 处理（标 done 保证可见）。
+   *
+   * ⚠️ 不能用 document.startViewTransition 的 update 回调那套 rAF 等待 ——
+   * 那种场景下浏览器抑制渲染、rAF 永不触发（已知会卡死）。
+   */
+  const play = (retries = 6) => {
+    const lines = document.querySelectorAll('.fm-line')
+    if (!lines.length) {
+      if (reducedMotion) return true
+      // 首页 DOM 可能尚未提交（首屏 hydration 与路由钩子都可能早于渲染）。
+      // 用 rAF 轮询重试而非靠单次时机碰运气，避免「刷新时诗句根本没升起」。
+      if (retries > 0) {
+        requestAnimationFrame(() => play(retries - 1))
+        return true
+      }
+      // 重试耗尽仍无诗句 → 判定为非首页。标 done 让文字保持终态可见，
+      // 避免「从文章页切回首页时诗句消失」。
+      root.classList.add('fm-line-done')
+      return false
+    }
+    // 若已经播过，不重复播：直接落终态。
+    // 覆盖「SPA 从文章页切回首页」——此时首页 DOM 是新建的，诗句处于 CSS 初始态,
+    // 必须显式挂 done 它才可见（这也正是这里要 requestAnimationFrame 兜一帧的原因）。
+    if (poemRisen) {
+      root.classList.add('fm-line-done')
+      return true
+    }
+
+    lines.forEach((el, i) => el.style.setProperty('--fm-line-i', String(i)))
+
+    // 减弱动效偏好：跳过动画，直接落终态（CSS 里也已同步禁用 animation）
+    if (reducedMotion) {
+      root.classList.add('fm-line-done')
+      poemRisen = true
+      return true
+    }
+
+    // ⚠️ 两层 rAF：初始态是 CSS 静态定义的，首次绘制已「看到」它。
+    // 同一帧挂类会让起止值合并——与 setupReveal 踩过的坑同源。
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        root.classList.add('fm-line-in')
+        poemRisen = true
+
+        const first = lines[0].firstElementChild
+        if (first) {
+          first.addEventListener(
+            'animationend',
+            () => {
+              root.classList.add('fm-line-done')
+              root.classList.remove('fm-line-in')
+            },
+            { once: true }
+          )
+        }
+      })
+    })
+    return true
+  }
+
+  return play
 }
 
 /* 指针状态的**模块级共享槽**。
@@ -1698,6 +1808,7 @@ export default {
     const resetHeroPointer = setupHeroPointer()
     const resetHeroFly = setupHeroFly()
     setupReveal()
+    const playPoemRise = setupPoemRise()
     setupScrollProgress()
     setupNavState()
     setupBackToTop()
@@ -1760,9 +1871,25 @@ export default {
         if (resetHeroFly) resetHeroFly()
         // 指针变量归零：新页的 hero 从"字放平 + 门紧闭"起步，不继承上一页的倾角与开合度
         if (resetHeroPointer) resetHeroPointer()
+        /* 诗句升起（2026-09-19）。
+           ⚠️ 这里**故意让它有机会执行**，而不是"只在首屏调一次"：
+           因为 SPA 从文章页切回首页时，首页 DOM 是**新建**的，诗句处于 CSS 初始态
+           （translateY(100%) + opacity:0）——若不处理，就是一片空白。
+           playPoemRise() 内部用**模块级 poemRisen** 判断是否已播过：
+             · 首次加载 / 整页刷新 → 播升起
+             · SPA 切回 → 直接落终态（不重复播，避免与 VT 横移打架）
+           之所以要 requestAnimationFrame：钩子在路由变更**之后**触发，
+           但新首页的 DOM 可能此刻尚未提交完，交给下一帧更稳。 */
+        if (playPoemRise) requestAnimationFrame(() => playPoemRise())
         requestAnimationFrame(() => rebindHero && rebindHero())
       }
     }
     arm()
+    /* 首屏硬加载（刷新/直接进入首页）时 onAfterRouteChange 不触发，
+       必须在 hydration 后自己跑一次。此时 .fm-line 可能还没渲染完
+       （首页是 Vue 组件挂载出来的）—— play() 内部用 rAF 轮询重试若干帧，
+       找不到就重试，重试耗尽才判定为非首页并标 done 保持可见，
+       所以不会把诗句锁死成隐形。 */
+    if (playPoemRise) requestAnimationFrame(() => playPoemRise())
   }
 }
