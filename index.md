@@ -374,10 +374,16 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
   display: inline-flex;
   gap: 14px;
   width: max-content;
-  animation: fm-mq-scroll 58s linear infinite;
+  animation: fm-mq-scroll 62s linear infinite;
 }
-.fm-mq-row.is-1 .fm-mq-track { animation-duration: 44s; animation-direction: reverse; }
-.fm-mq-row.is-2 .fm-mq-track { animation-duration: 70s; }
+/* 三行：上 92s 左移 → 中 74s 右移（reverse）→ 下 108s 左移。
+   中排反向是刻意的错落感（读者 2026-09-19 明确要保留："逆走参差有致，
+   同向过于整齐"）。但**中排不能最快** —— 原先 44s 的 reverse 是全场最急，
+   那句"中排跟没吃饭一样"就来自这里。现在中排 74s，比上排快、比下排快，
+   仍是最"活跃"的一行，但已经落在从容的区间。 */
+.fm-mq-row.is-0 .fm-mq-track { animation-duration: 92s; }
+.fm-mq-row.is-1 .fm-mq-track { animation-duration: 74s; animation-direction: reverse; }
+.fm-mq-row.is-2 .fm-mq-track { animation-duration: 108s; }
 .fm-mq:hover .fm-mq-track { animation-play-state: paused; }
 @keyframes fm-mq-scroll {
   to { transform: translateX(-50%); }
@@ -451,5 +457,12 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
   .fm-row { grid-template-columns: 34px minmax(0, 1fr); }
   .fm-meta { grid-column: 2; }
   .fm-mast-sub { display: none; }
+  /* 手机端词带只留一行：三行在窄屏上挤在一起会织成一张密集的网，
+     失去"标签是一条一条读"的信息节奏。留第一行（is-0）即可。 */
+  .fm-mq-row.is-1,
+  .fm-mq-row.is-2 { display: none; }
+  /* ⚠️ 必须带 .fm-mq-row 前缀：桌面的 .fm-mq-row.is-0 特异性 (0,2,0)
+     会压过裸的 .fm-mq-track (0,1,0)，实测移动端拿到的是 78s 不是这里写的值。 */
+  .fm-mq-row.is-0 .fm-mq-track { animation-duration: 46s; }
 }
 </style>
