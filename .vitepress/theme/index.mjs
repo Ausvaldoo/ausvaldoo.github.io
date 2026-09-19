@@ -9,7 +9,7 @@ import './custom.css'
      · 而本函数是 enhanceApp 时**闭包捕获一次**的，模块级变量与它同生命周期，
        语义更准确 —— 「这个 JS 实例已经负责过升起」。
    2026-09-19 实测（headless Edge，SPA 内「首页 → 点进文章 → 点回首页」）：
-     同一文档内返回首页时 fm-line-in 不再出现、诗句 y 恒为 0（直接可见），
+     同一文档内返回首页时 fm-rise-in 不再出现、诗句 y 恒为 0（直接可见），
      守卫生效；只有整页重载（刷新 / 直接贴 URL 进入）才重新播一次 —— 这正是
      用户要的「首次进入，或者是刷新的一瞬间」。 */
 let poemRisen = false
@@ -126,20 +126,33 @@ function setupReveal() {
 }
 
 /**
- * 首页诗句逐行升起（2026-09-19 站长指定）。
+ * 首页诗句逐词升起（2026-09-19 站长指定；同日二次迭代改为逐词）。
  *
  * 与 setupHeroFly 的分工：
  *   - setupHeroFly 是**滚动触发**的（刊名飞进导航栏），与本次无关；
- *   - 本函数是**首屏加载触发**的，从地平线逐行升起。
+ *   - 本函数是**首屏加载触发**的，从地平线逐词升起。
  *
  * ⚠️ 与 View Transitions 的互斥（这是设计里最容易搞错的地方）：
  *   从文章页返回首页时，ViewTransitions 会让**整页从左侧飞入**（vt-back）。
- *   如果此时再叠一层逐行升起，就是「页面在横移、文字在纵升」两套空间隐喻打架。
+ *   如果此时再叠一层逐词升起，就是「页面在横移、文字在纵升」两套空间隐喻打架。
  *   所以**已经播过一次就不重播**（见下方的 poemRisen 模块级守卫）。
  *
  * 关于「升起」为什么必须两层 span：
  *   外层 overflow:hidden 做掩码，内层 transform 做位移。如果只有一层，
  *   位移会把掩码一起带走，看到的是整行平移而非「从地平线下钻出来」。
+ *
+ * ── 为什么从「逐行」改成「逐词」（2026-09-19 站长反馈）──────────────
+ *   站长原话：「他的文字从地平线上升时，是左端先上升，然后像把右端
+ *   拉起来一样。而且他的没那么紧凑，速度没那么快。咱的好像一下就全升
+ *   完了，他的比较缓慢」——指的是参照站点 ggdesign.it。
+ *
+ *   查其公开实现（`laiv.ggdesign.it/js/ggdesign/global.js`）确认：
+ *     SplitText.create(el, { type:'words', mask:'words' })   ← **按词拆**
+ *     gsap.from(words, { yPercent:100, rotateZ:4, filter:'blur(4px)',
+ *                        duration:1.25, ease:'power3', stagger:.03 })
+ *   逐行版只有 4 个错峰单位（4 行 × 0.07s = 0.21s 窗口），视觉上近乎齐步走；
+ *   逐词版错峰单位 ~14 个（0.03s × 13 = 0.42s 窗口），才有了「波浪」质感。
+ *   这里用 CSS animation 复刻，不引 GSAP（省 60KB 依赖）。
  */
 function setupPoemRise() {
   if (typeof window === 'undefined') return
@@ -147,7 +160,7 @@ function setupPoemRise() {
   const root = document.documentElement
 
   /* prefers-reduced-motion：**不 return**，而是直接标 done。
-     为什么不能直接 return：.fm-line > span 的基础态是 translateY(100%) + opacity:0
+     为什么不能直接 return：.fm-word > span 的基础态是 translateY(100%) + opacity:0
      （隐藏），CSS 的 reduce 媒体查询会覆盖成可见，但那是纯 CSS 保证；
      而 SPA 从文章页切回首页时诗句 DOM 是**新建**的，如果我们什么都不做，
      就完全依赖 CSS 媒体查询生效 —— 一旦有偏差（例如用户中途改系统设置、
@@ -156,9 +169,103 @@ function setupPoemRise() {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   /**
+   * 把 [data-poem] 的文本切成词并注入三层 DOM。
+   *
+   * 为什么不手写在 index.md 里：中文词长不一（"夏日蓝色的黄昏里" 该切成
+   * "夏日/蓝色/的/黄昏里" 还是 "夏日蓝色的/黄昏里"？），且改文案就要重排
+   * 一堆 span。交给 JS 按标点切分，文案改了也不用动结构。
+   *
+   * 切分规则：按**语义短语**切，而不是按固定字数硬切。
+   *   中文没有空格词边界，而参照站（ggdesign.it）是英文按空格分词。第一版
+   *   按 3 字硬切成 "夏日蓝 | 色的黄"，把词切碎了 —— 视觉上断得莫名其妙，
+   *   朗读节奏也乱。所以这里改用一份**短语清单**（下方 PHRASES）。
+   *
+   *   为什么用清单而不是分词算法：整首诗就这 4 句、14 个字块，且每句的
+   *   自然断点（"夏日蓝色的/黄昏里"）是固定的。硬塞一个中文分词库（几 MB）
+   *   只为切 4 句话，是杀鸡用牛刀；而正则分词（按常见虚词）在这么短的
+   *   诗里也切不准。文案极少变，清单最省且最准。
+   *   ⚠️ 改诗句文案时**必须同步改 PHRASES**，否则切分对不上（下方有兜底：
+   *   清单匹配不上就退回按标点整句成块，至少不会切碎）。
+   *
+   * ⚠️ 幂等：已切过就跳过。SPA 切回首页时 DOM 是新建的，会重新切一次。
+   */
+  const splitPoem = (el, phrases = []) => {
+    if (!el || el.dataset.poemSplit === '1') return
+    const text = el.getAttribute('aria-label') || el.textContent || ''
+    if (!text.trim()) return
+
+    const frag = document.createDocumentFragment()
+
+    /* 优先按短语清单切：逐句用清单里的短语「逐条吃字符」，能完整吃完才算匹配。
+       任何一句吃不动 → 整体退回兜底（不半路混用两套切法）。 */
+    const byPhrases = () => {
+      const out = []
+      for (const line of text.split(/[，。、；！？…—]+/).map((s) => s.trim()).filter(Boolean)) {
+        let rest = line
+        const picked = []
+        while (rest.length) {
+          const hit = phrases.find((p) => p && rest.startsWith(p))
+          if (!hit) return null // 清单不匹配 → 整体退回兜底
+          picked.push(hit)
+          rest = rest.slice(hit.length)
+        }
+        out.push(picked.length ? picked : [line])
+      }
+      return out
+    }
+
+    // 兜底：按标点整句成块（宁可错峰单位少，也不把词切碎）
+    const bySentence = () =>
+      text
+        .split(/[，。、；！？…—]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => [s])
+
+    const lines = byPhrases() || bySentence()
+
+    for (const picked of lines) {
+      if (!picked.length) continue
+      const lineEl = document.createElement('span')
+      lineEl.className = 'fm-line'
+      for (const chunk of picked) {
+        const w = document.createElement('span')
+        w.className = 'fm-word'
+        w.setAttribute('aria-hidden', 'true')
+        const inner = document.createElement('span')
+        inner.textContent = chunk
+        w.appendChild(inner)
+        lineEl.appendChild(w)
+      }
+      frag.appendChild(lineEl)
+    }
+    el.textContent = ''
+    el.appendChild(frag)
+    el.dataset.poemSplit = '1'
+  }
+
+  /* 诗句的语义短语表（顺序无关，靠 startsWith 逐条吃）。
+     ⚠️ 改 index.md 里的诗句文案时**必须同步改这里**；漏改不会崩，
+     但会退回「整句一块」的兜底切法（错峰单位骤减，波浪感变弱）。
+     断点依据：按朗读的自然停顿 —— "夏日蓝色的 / 黄昏里"、
+     "我将 / 走上 / 幽径"、"不顾 / 麦茎刺肤"、"漫步地 / 踏青"。
+     每句 2–3 块，全诗 9 块 → 错峰窗口 8 × 0.03 = 0.24s。 */
+  const PHRASES = [
+    '夏日蓝色的',
+    '黄昏里',
+    '我将',
+    '走上',
+    '幽径',
+    '不顾',
+    '麦茎刺肤',
+    '漫步地',
+    '踏青',
+  ]
+
+  /**
    * 播一次升起。
    *
-   * 两种「找不到 .fm-line」的情形要区分，处理方式相反：
+   * 两种「找不到诗句」的情形要区分，处理方式相反：
    *   a) 当前页不是首页（文章页/归档页）→ 什么都不做，等下一次调用；
    *   b) 是首页但 DOM 还没渲染完 → 短暂等待后重试。
    * 分不清时就当作 (b) 重试几次，超时后再按 (a) 处理（标 done 保证可见）。
@@ -167,8 +274,8 @@ function setupPoemRise() {
    * 那种场景下浏览器抑制渲染、rAF 永不触发（已知会卡死）。
    */
   const play = (retries = 6) => {
-    const lines = document.querySelectorAll('.fm-line')
-    if (!lines.length) {
+    const poem = document.querySelector('[data-poem]')
+    if (!poem) {
       if (reducedMotion) return true
       // 首页 DOM 可能尚未提交（首屏 hydration 与路由钩子都可能早于渲染）。
       // 用 rAF 轮询重试而非靠单次时机碰运气，避免「刷新时诗句根本没升起」。
@@ -178,22 +285,32 @@ function setupPoemRise() {
       }
       // 重试耗尽仍无诗句 → 判定为非首页。标 done 让文字保持终态可见，
       // 避免「从文章页切回首页时诗句消失」。
-      root.classList.add('fm-line-done')
+      root.classList.add('fm-rise-done')
       return false
     }
+
+    // 结构由 JS 注入（幂等，见 splitPoem 注释）。必须在取 .fm-word 之前做，
+    // 因为词节点是这里才生成的。
+    splitPoem(poem, PHRASES)
+    const words = poem.querySelectorAll('.fm-word')
+    if (!words.length) {
+      root.classList.add('fm-rise-done')
+      return false
+    }
+
     // 若已经播过，不重复播：直接落终态。
     // 覆盖「SPA 从文章页切回首页」——此时首页 DOM 是新建的，诗句处于 CSS 初始态,
     // 必须显式挂 done 它才可见（这也正是这里要 requestAnimationFrame 兜一帧的原因）。
     if (poemRisen) {
-      root.classList.add('fm-line-done')
+      root.classList.add('fm-rise-done')
       return true
     }
 
-    lines.forEach((el, i) => el.style.setProperty('--fm-line-i', String(i)))
+    words.forEach((el, i) => el.style.setProperty('--fm-word-i', String(i)))
 
     // 减弱动效偏好：跳过动画，直接落终态（CSS 里也已同步禁用 animation）
     if (reducedMotion) {
-      root.classList.add('fm-line-done')
+      root.classList.add('fm-rise-done')
       poemRisen = true
       return true
     }
@@ -202,16 +319,19 @@ function setupPoemRise() {
     // 同一帧挂类会让起止值合并——与 setupReveal 踩过的坑同源。
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        root.classList.add('fm-line-in')
+        root.classList.add('fm-rise-in')
         poemRisen = true
 
-        const first = lines[0].firstElementChild
-        if (first) {
-          first.addEventListener(
+        // 用**最后一个词**的 animationend 收尾：它的 delay 最大，
+        // 所以它结束时全部词都已落位。用第一个词会在其余词还在动时就移除
+        // 触发类，后半句直接跳回终态（一次明显的「啪」）。
+        const last = words[words.length - 1]
+        if (last && last.firstElementChild) {
+          last.firstElementChild.addEventListener(
             'animationend',
             () => {
-              root.classList.add('fm-line-done')
-              root.classList.remove('fm-line-in')
+              root.classList.add('fm-rise-done')
+              root.classList.remove('fm-rise-in')
             },
             { once: true }
           )
@@ -1886,7 +2006,7 @@ export default {
     }
     arm()
     /* 首屏硬加载（刷新/直接进入首页）时 onAfterRouteChange 不触发，
-       必须在 hydration 后自己跑一次。此时 .fm-line 可能还没渲染完
+       必须在 hydration 后自己跑一次。此时 [data-poem] 可能还没渲染完
        （首页是 Vue 组件挂载出来的）—— play() 内部用 rAF 轮询重试若干帧，
        找不到就重试，重试耗尽才判定为非首页并标 done 保持可见，
        所以不会把诗句锁死成隐形。 */

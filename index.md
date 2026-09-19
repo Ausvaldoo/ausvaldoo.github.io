@@ -48,16 +48,17 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 <section class="fm-cover">
   <div class="fm-left">
     <span class="fm-kicker" aria-hidden="true"></span>
-    <!-- 每行一个 span 包裹层（掩码）+ 内层 span（实际位移）。
-         结构必须两层：外层 overflow:hidden 做裁切，内层 transform 做位移，
-         否则位移会带动掩码一起动，看不到「从地平线升起」的裁切效果。
-         内层用 aria-hidden 之外的方案保证读屏正常：整块 h1 加 aria-label。 -->
-    <h1 class="fm-stmt" aria-label="夏日蓝色的黄昏里，我将走上幽径，不顾麦茎刺肤，漫步地踏青">
-      <span class="fm-line" aria-hidden="true"><span>夏日蓝色的黄昏里</span></span>
-      <span class="fm-line" aria-hidden="true"><span>我将走上幽径</span></span>
-      <span class="fm-line" aria-hidden="true"><span>不顾麦茎刺肤</span></span>
-      <span class="fm-line" aria-hidden="true"><span>漫步地踏青</span></span>
-    </h1>
+    <!-- 诗句：**逐词**升起（2026-09-19 二次迭代，对齐 ggdesign.it 的做法）。
+         行只是换行单位，掩码单位是「词」——所以结构是三层：
+           .fm-line   → 换行容器（block，不裁切）
+           .fm-word   → 词掩码（inline-block + overflow:hidden，裁掉词的下半部分）
+           .fm-word > span → 实际位移的词
+         为什么要到「词」这一级：只按行错峰，四行只有 4 个错峰单位，视觉上近乎
+         齐步走（实测总错峰窗口仅 0.21s）。拆到词后错峰单位变成 ~14 个，
+         才会出现「左端先起、右端被拉着起来」的连续波浪感。
+         ⚠️ 词由 JS 在运行时按标点切分并注入（见 index.mjs 的 splitPoemWords），
+         不在这里手写死——中文词长不一，手写容易漏且改文案要重排。 -->
+    <h1 class="fm-stmt" data-poem aria-label="夏日蓝色的黄昏里，我将走上幽径，不顾麦茎刺肤，漫步地踏青"></h1>
   </div>
   <div class="fm-right">
     <div class="fm-toc-head">
@@ -186,76 +187,6 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
   line-height: 1.42;
   letter-spacing: 0.01em;
   color: var(--vp-c-text-1);
-}
-
-/* ── 诗句逐行升起（2026-09-19 站长指定）─────────────────────────
-   触发时机：**仅首页首次加载/刷新**。从文章页返回首页时走 View Transitions
-   的整页横移，此时不重复播升起 —— 两套空间隐喻（纵向升起 vs 横向平移）
-   分属不同触发条件，不会同时发生。
-
-   为什么行间隔要「紧凑」：诗歌是一口气读完的整体，逐行若拖到 2s 以上，
-   读到第四行时第一行早已落位，「一气呵成」的语感就碎了。*/
-.fm-line {
-  display: block;
-  overflow: hidden; /* 掩码：裁掉内层在下方的那部分 */
-  /* ⚠️ 不用 padding/margin 补行距，否则掩码会把上下的字一起裁掉。
-     行高由 .fm-stmt 的 line-height 承担，掩码只包住文字本身。 */
-}
-.fm-line > span {
-  display: block;
-  /* 初始态：沉到地平线以下（100% = 自身高度），并轻微倾斜+模糊，
-     模拟「从远处地平线浮起」的实体感 —— 0 位移的纯透明淡入会显得很平。 */
-  transform: translateY(100%) rotate(2.5deg);
-  opacity: 0;
-  filter: blur(3px);
-  will-change: transform, opacity, filter;
-}
-
-/* 升起动画：只在首页根元素带 .fm-line-in 时播。
-   .fm-line-in 由 index.mjs 的 setupPoemRise() 在**首屏加载**时挂上。 */
-html.fm-line-in .fm-line > span {
-  animation: fm-line-rise 0.92s cubic-bezier(0.22, 1, 0.36, 1) both;
-  /* 紧凑错峰：每行只隔 0.07s，四行总时长 ≈ 0.92 + 0.21 = 1.13s */
-  animation-delay: calc(var(--fm-line-i, 0) * 0.07s);
-}
-
-@keyframes fm-line-rise {
-  from {
-    transform: translateY(100%) rotate(2.5deg);
-    opacity: 0;
-    filter: blur(3px);
-  }
-  to {
-    transform: translateY(0) rotate(0deg);
-    opacity: 1;
-    filter: blur(0);
-  }
-}
-
-/* 动画结束后把元素**钉在终态**。
-   ⚠️ 这是实测抓到的 bug（2026-09-19）：原写法只清 will-change，
-   于是 .fm-line-in 一被移除，`animation: ... both` 提供的终态就随之消失，
-   元素回落到 .fm-line > span 的基础态（translateY(100%) + opacity:0）——
-   实测时间线：动画在 t=929~1740ms 正常播到 opacity=1，
-   紧接着 t=1785ms 就跳回 opacity=0，**诗句凭空消失**。
-   所以 done 态必须显式写死终态值，不能只依赖动画的 fill。 */
-html.fm-line-done .fm-line > span {
-  transform: none;
-  opacity: 1;
-  filter: none;
-  will-change: auto;
-}
-
-/* 尊重系统的减弱动效偏好：直接落到终态，不播动画 */
-@media (prefers-reduced-motion: reduce) {
-  .fm-line > span {
-    transform: none;
-    opacity: 1;
-    filter: none;
-  }
-  html.fm-line-in .fm-line > span {
-    animation: none;
-  }
 }
 
 /* 目录 */
@@ -560,3 +491,106 @@ html.fm-line-done .fm-line > span {
   .fm-mq-row.is-0:active .fm-mq-track { animation-play-state: paused; }
 }
 </style>
+
+
+<!-- 诗句升起动效的样式必须**独立于上面的 scoped 块**。
+     原因：<style scoped> 靠编译期给模板元素打 data-v-xxx 属性来限定作用域，
+     而 .fm-line / .fm-word 是 index.mjs 在**运行时**注入的（词要按标点动态切分），
+     拿不到那个属性 → scoped 规则永远匹配不上（实测症状：.fm-word 计算出
+     display:inline、overflow:visible，掩码完全失效，词直接显示在下方）。
+     所以这一块用**裸 style**，选择器自带 .fm- 前缀，不会误伤 VitePress 的类。 -->
+<style>
+/* ── 诗句逐词升起（2026-09-19 站长指定；对齐 ggdesign.it）────────────
+   触发时机：**仅首页首次加载/刷新**。从文章页返回首页时走 View Transitions
+   的整页横移，此时不重复播升起 —— 两套空间隐喻（纵向升起 vs 横向平移）
+   分属不同触发条件，不会同时发生。
+
+   参数取自参照站点 ggdesign.it 的公开实现（GSAP SpliteText 逐词）：
+     yPercent:100 · rotateZ:4 · blur(4px) · duration:1.25 · ease:power3 · stagger:.03
+   本实现用 CSS animation 而非 GSAP（不引入 60KB 依赖），缓动用
+   cubic-bezier(.33,1,.68,1) 逼近 power3（其定义即 ease-out-cubic 的变体）。
+
+   ⚠️ 为什么掩码单位必须是「词」而不是「行」：
+   只按行错峰时，四行只有 4 个错峰单位 → 总错峰窗口 0.21s，视觉上近乎齐步走，
+   没有「左端先起、右端被拉着起来」的波浪感。站长原话：
+   「他的文字从地平线上升时，是左端先上升，然后像把右端拉起来一样……
+     咱的好像一下就全上升完了，他的比较缓慢」
+   拆到词后错峰单位增至 ~14 个，波浪感才出得来。 */
+.fm-line {
+  display: block;
+  /* ⚠️ 这一层**不做裁切**：裁切交给 .fm-word。若在此裁切，
+     inline-block 的词会被行框的 overflow 整体切掉，
+     且带 rotate 的词会在行边界处被削去一角。 */
+}
+/* 词掩码：inline-block + overflow:hidden。inline-block 是必须的 ——
+   inline 元素的 overflow 不生效，掩码会失效（词会直接显示在下方）。 */
+.fm-word {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  /* ⚠️ 不能加 padding 补字距：掩码会连 padding 一起裁，词头被削。
+     词间距靠 .fm-word + .fm-word 的 margin，加在掩码**外侧**。 */
+}
+.fm-word + .fm-word {
+  margin-left: 0.04em;
+}
+.fm-word > span {
+  display: inline-block;
+  /* 初始态：沉到地平线以下（100% = 自身高度），并轻微倾斜+模糊，
+     模拟「从远处地平线浮起」的实体感 —— 0 位移的纯透明淡入会显得很平。 */
+  transform: translateY(100%) rotate(4deg);
+  opacity: 0;
+  filter: blur(4px);
+  will-change: transform, opacity, filter;
+}
+
+/* 升起动画：只在首页根元素带 .fm-rise-in 时播。
+   .fm-rise-in 由 index.mjs 的 setupPoemRise() 在**首屏加载**时挂上。 */
+html.fm-rise-in .fm-word > span {
+  animation: fm-word-rise 1.25s cubic-bezier(0.33, 1, 0.68, 1) both;
+  /* 逐词错峰 0.03s（与参照站点一致）。14 个词 → 总错峰窗口 0.42s，
+     加上单段 1.25s → 整句约 1.67s 走完，比原先的 1.13s 明显更缓。 */
+  animation-delay: calc(var(--fm-word-i, 0) * 0.03s);
+}
+
+@keyframes fm-word-rise {
+  from {
+    transform: translateY(100%) rotate(4deg);
+    opacity: 0;
+    filter: blur(4px);
+  }
+  to {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* 动画结束后把元素**钉在终态**。
+   ⚠️ 这是实测抓到的 bug（2026-09-19）：原写法只清 will-change，
+   于是 .fm-rise-in 一被移除，`animation: ... both` 提供的终态就随之消失，
+   元素回落到基础态（translateY(100%) + opacity:0）——**诗句凭空消失**。
+   实测时间线：动画在 t=929~1740ms 正常播到 opacity=1，
+   紧接着 t=1785ms 就跳回 opacity=0。
+   所以 done 态必须显式写死终态值，不能只依赖动画的 fill。 */
+html.fm-rise-done .fm-word > span {
+  transform: none;
+  opacity: 1;
+  filter: none;
+  will-change: auto;
+}
+
+/* 尊重系统的减弱动效偏好：直接落到终态，不播动画 */
+@media (prefers-reduced-motion: reduce) {
+  .fm-word > span {
+    transform: none;
+    opacity: 1;
+    filter: none;
+  }
+  html.fm-rise-in .fm-word > span {
+    animation: none;
+  }
+}
+
+</style>
+
