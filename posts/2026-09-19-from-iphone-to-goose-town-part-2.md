@@ -1,6 +1,6 @@
 ---
 title: 鹅城再收一轮税——房产税落地如何重塑中美房产配置策略（下）
-categories: 投资笔记
+categories: 社会观察
 tags:
   - 知乎
   - 投资

@@ -1,6 +1,6 @@
 ---
 title: 感知的切除手术：中国文艺四十年变迁中的权力解剖学
-categories: 历史与文化
+categories: 权力与制度
 tags:
   - 知乎
   - 文艺
