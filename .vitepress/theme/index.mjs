@@ -1654,6 +1654,42 @@ function setupHeroFly() {
   }
 }
 
+/**
+ * 词带触摸滑动（手机端）：transform 动画与手动滚动是两套坐标系，
+ * 同时开着会互相拉扯 —— 手指刚滑走，动画下一帧又把轨道拉回原位。
+ * 所以触摸开始时直接停掉 CSS 动画，让原生惯性滚动全权接管；
+ * 触摸结束后把动画的位置接回去（重置 delay 从当前位置续播会突兀，
+ * 这里选择"松手即从动画起点重新走"—— 46s 一圈、视觉上没人追得到断点）。
+ */
+function setupMarqueeTouch() {
+  const rows = () => Array.from(document.querySelectorAll('.fm-mq-row.is-0'))
+  const bind = (row) => {
+    if (row.dataset.touchBound) return
+    row.dataset.touchBound = '1'
+    const track = row.querySelector('.fm-mq-track')
+    if (!track) return
+    row.addEventListener('touchstart', () => {
+      track.style.animationPlayState = 'paused'
+    }, { passive: true })
+    row.addEventListener('touchend', () => {
+      track.style.animationPlayState = 'running'
+    }, { passive: true })
+    // 手指离开但浏览器仍在惯性滚动时，动画继续跑会"抢"位置 —— 等滚动停稳再恢复
+    row.addEventListener('scroll', () => {
+      track.style.animationPlayState = 'paused'
+      clearTimeout(row._mqTimer)
+      row._mqTimer = setTimeout(() => {
+        track.style.animationPlayState = 'running'
+      }, 180)
+    }, { passive: true })
+  }
+  const arm = () => rows().forEach(bind)
+  arm()
+  // 断点切换（桌面 ↔ 手机）会换掉哪一行可见，resize 时重新绑定
+  window.addEventListener('resize', arm, { passive: true })
+  return arm
+}
+
 export default {
   extends: DefaultTheme,
   Layout: MyLayout,
@@ -1669,6 +1705,9 @@ export default {
     const resetSpotlight = setupSelectionSpotlight()
     // SSR（构建渲染页）时没有 window/document，直接返回
     if (typeof window === 'undefined') return
+    // ⚠️ 必须在 window 守卫之后：它一上来就查 .fm-mq-row，
+    // SSR 阶段没有 document，否则 build 报 "document is not defined"
+    setupMarqueeTouch()
 
     // Lenis 顺滑滚动（站长 2026-09-19 点名要的效果；vendored 于 lenis@1.3.26，33KB ESM）。
     // - reduced-motion 不启用；触屏默认原生滚动（Lenis 的 syncTouch 默认 false）

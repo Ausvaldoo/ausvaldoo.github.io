@@ -457,12 +457,27 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
   .fm-row { grid-template-columns: 34px minmax(0, 1fr); }
   .fm-meta { grid-column: 2; }
   .fm-mast-sub { display: none; }
-  /* 手机端词带只留一行：三行在窄屏上挤在一起会织成一张密集的网，
-     失去"标签是一条一条读"的信息节奏。留第一行（is-0）即可。 */
+  /* 手机端词带：只留一行，但**必须能手动滑动**。
+     三行在 390px 窄屏上会织成一张密网，每行只露 3-4 个词，
+     失去"一条一条读"的节奏——所以留 is-0 一行。
+     但 overflow:hidden 会连手指滑动一起禁掉（上一版的失误），
+     窄屏改成 overflow-x:auto + 触摸暂停动画：默认自动滚，
+     手指一搭就停下让位给手动滑，松手后动画继续。 */
   .fm-mq-row.is-1,
   .fm-mq-row.is-2 { display: none; }
+  .fm-mq-row.is-0 {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .fm-mq-row.is-0::-webkit-scrollbar { display: none; }
   /* ⚠️ 必须带 .fm-mq-row 前缀：桌面的 .fm-mq-row.is-0 特异性 (0,2,0)
      会压过裸的 .fm-mq-track (0,1,0)，实测移动端拿到的是 78s 不是这里写的值。 */
-  .fm-mq-row.is-0 .fm-mq-track { animation-duration: 46s; }
+  .fm-mq-row.is-0 .fm-mq-track {
+    animation-duration: 46s;
+  }
+  /* 触屏设备：桌面那条 :hover 暂停规则在这里会失效（无 hover），
+     所以补一条 :active —— 手指按住时停住，让手动滑动说了算。 */
+  .fm-mq-row.is-0:active .fm-mq-track { animation-play-state: paused; }
 }
 </style>
