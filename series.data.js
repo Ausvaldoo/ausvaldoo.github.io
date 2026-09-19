@@ -16,6 +16,24 @@ import { createContentLoader } from 'vitepress'
 // 绝不按日期猜（同一天发的多篇会分不出先后）。
 export default createContentLoader('posts/*.md', {
   transform(raw) {
+    // ⚠️ 序号解析必须区分「没写」和「写了 0」—— 这是 2026-09-19 修掉的真 bug。
+    //
+    // 原写法：`Number(frontmatter.seriesOrder) || 9999`
+    // `Number(0)` 得 0，而 0 在 `||` 里是 **falsy** → 被兜底成 9999。
+    // 于是《标签的背叛》00 那篇（seriesOrder: 0）被排到最后，
+    // 系列页显示顺序成了 01 → 02 → 03 → 00，而正确顺序是 00 → 03。
+    // （与同名旧产物的 timestamp-*.mjs 无关，那些是构建缓存，源只有这一处。）
+    //
+    // 教训：`|| 兜底` 用于「缺省值」时，只对 `undefined/null/''` 安全；
+    // 一旦合法取值域包含 0（序号、金额、计数、左偏移…），必须改用显式判空。
+    const parseOrder = (v) => {
+      if (v === undefined || v === null) return 9999
+      const s = String(v).trim()
+      if (s === '') return 9999
+      const n = Number(s)
+      return Number.isFinite(n) ? n : 9999
+    }
+
     return (
       raw
         // 归档页 posts/index.md 也会被 glob 命中，必须排除（同 posts.data.js 的处理）
@@ -28,8 +46,8 @@ export default createContentLoader('posts/*.md', {
           title: String(frontmatter.title || '').trim(),
           series: String(frontmatter.series).trim(),
           // 漏写 seriesOrder 的排到最后（9999），而不是落到第 0 位 ——
-          // 少写一个序号不该让那篇篡位成「系列首篇」。
-          order: Number(frontmatter.seriesOrder) || 9999
+          // 少写一个序号不该让那篇篡位成「系列首篇」。写了 0 则是合法序号。
+          order: parseOrder(frontmatter.seriesOrder)
         }))
         // 先按系列名归组，组内按序号；序号相同再按标题，
         // 保证每次构建顺序稳定（否则会产生无意义的 diff）
