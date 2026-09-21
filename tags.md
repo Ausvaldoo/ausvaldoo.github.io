@@ -4,7 +4,7 @@ description: 按分类与标签索引「牧神的笔记」全部文章
 ---
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { data as posts } from './posts.data.js'
 
 // 一篇文章只能有一个分类（归属），但可以有多个标签（浏览入口）。
@@ -53,15 +53,27 @@ const cloud = tags.map(([name, list], i) => {
    内联排列、小字号，跟分类区的「大标题 + 宽列表」刻意长成两样。 */
 const current = ref('')
 const open = ref(false)
+// 被点的那个词在点击瞬间的屏幕矩形 —— 用来做「神奇移动」的 FLIP 起点
+const flyFrom = ref(null)
+const rootEl = ref(null)
 const currentList = computed(() => {
   const list = tagMap[current.value]
   if (!list) return []
   return [...list].filter(Boolean).sort((a, b) => String(b.date).localeCompare(String(a.date)))
 })
 
-function selectTag(name) {
+function selectTag(name, ev) {
   if (!tagCount[name]) return
   current.value = name
+  // 记下被点词在点击瞬间的屏幕位置 —— 它是「神奇移动」的起点
+  let fromRect = null
+  try {
+    const el = (ev && ev.currentTarget) || document.getElementById('tag-' + name)
+    if (el) fromRect = el.getBoundingClientRect()
+  } catch (e) {
+    /* 某些沙箱拿不到 currentTarget，退化为无 FLIP（只剩淡入） */
+  }
+  flyFrom.value = fromRect
   open.value = true
   // replaceState 而不是 location.hash：后者会触发一次跳转滚动，
   // 点个标签就被弹走半屏，很不体面。
@@ -70,6 +82,7 @@ function selectTag(name) {
   } catch (e) {
     /* 某些沙箱 / 预览环境禁用 history，退化为「只有状态、没有锚点」，不影响使用 */
   }
+  nextTick(playMagicMove)
 }
 function closeCloud() {
   open.value = false
@@ -78,6 +91,36 @@ function closeCloud() {
   } catch (e) {
     /* 同上 */
   }
+}
+/* 神奇移动（FLIP）：被点的词「飞」到成为标题 `.tr-name`。
+   借用全站标题切页的缓动 cubic-bezier(0.22,1,0.36,1)，再加一点迪士尼式回弹
+   cubic-bezier(0.34,1.56,0.64,1) 做"加速—到位—反弹"。reduced-motion 直接跳过。 */
+function playMagicMove() {
+  if (!flyFrom.value) return
+  try {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  } catch (e) {
+    /* 无 matchMedia 时不拦截 */
+  }
+  const root = rootEl.value
+  if (!root) return
+  const nameEl = root.querySelector('.tr-name')
+  if (!nameEl) return
+  const f = flyFrom.value
+  const to = nameEl.getBoundingClientRect()
+  const dx = f.left + f.width / 2 - (to.left + to.width / 2)
+  const dy = f.top + f.height / 2 - (to.top + to.height / 2)
+  const sx = f.width / to.width
+  const sy = f.height / to.height
+  nameEl.style.transition = 'none'
+  nameEl.style.transformOrigin = 'center'
+  nameEl.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')'
+  // 强制 reflow 让起点生效，再下一帧放开过渡
+  void nameEl.offsetWidth
+  requestAnimationFrame(() => {
+    nameEl.style.transition = 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)'
+    nameEl.style.transform = 'none'
+  })
 }
 function readHash() {
   const raw = (typeof location === 'undefined' ? '' : location.hash || '').replace(/^#/, '')
@@ -90,6 +133,7 @@ function readHash() {
   if (h.slice(0, 4) === 'tag-' && tagCount[h.slice(4)]) {
     current.value = h.slice(4)
     open.value = true
+    nextTick(playMagicMove)
   }
 }
 onMounted(() => {
@@ -125,15 +169,16 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
 
 <h2 class="idx-h2">标签</h2>
 
-<div class="cloud-zone" :class="{ 'is-open': open }">
+<div class="cloud-zone" ref="rootEl" :class="{ 'is-open': open }">
   <div class="cloud">
     <button
       v-for="c in cloud"
       :key="c.name"
       :id="`tag-${c.name}`"
       class="cw"
+      :class="{ 'is-source': open && c.name === current }"
       :style="{ fontSize: c.fs + 'px', '--dx': c.dx, '--dy': c.dy, transitionDelay: open ? c.delay : '0ms' }"
-      @click="selectTag(c.name)"
+      @click="selectTag(c.name, $event)"
     >{{ c.name }}<span class="cw-n">{{ c.n }}</span></button>
   </div>
   <div v-if="open" class="tag-result">
@@ -286,7 +331,8 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   font-weight: 700;
   line-height: 1.5;
   color: var(--vp-c-text-2);
-  transition: color 0.18s ease, opacity 0.32s ease, transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  /* 散开用迪士尼式回弹缓动：飞出去会稍微过冲再落定，比之前的线性淡出有"弹"感 */
+  transition: color 0.18s ease, opacity 0.45s ease, transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .cw:hover {
   color: var(--rust);
@@ -299,34 +345,40 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   margin-left: 3px;
   vertical-align: 0.35em;
 }
-/* 散开：点词后整片云按各自的 (--dx,--dy) 飞出淡去，方向/距离/延迟全是定值 */
+/* 散开：点词后整片云按各自的 (--dx,--dy) 飞出淡去，方向/距离/延迟全是定值。
+   被点的那个词不跟着散开 —— 它"变成"了标题（见 playMagicMove 的 FLIP）。 */
 .cloud-zone.is-open .cw {
   opacity: 0;
-  transform: translate(var(--dx), var(--dy)) scale(0.5);
+  transform: translate(var(--dx), var(--dy)) scale(0.25);
   pointer-events: none;
+}
+.cloud-zone.is-open .cw.is-source {
+  opacity: 0;
+  transform: none;
+  transition: opacity 0.12s ease;
 }
 
 /* ============ 紧凑标题串（点词后原位出现） ============ */
 .tag-result {
   grid-area: 1 / 1;
   align-self: start;
-  animation: tr-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* 整块只做淡入；"移动"交给 .tr-name 的 FLIP（从被点的词飞过来） */
+  animation: tr-fade 0.3s ease both;
 }
-@keyframes tr-in {
+@keyframes tr-fade {
   from {
     opacity: 0;
-    transform: translateY(10px);
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .tag-result {
     animation: none;
   }
-  .cloud-zone.is-open .cw {
+  .cloud-zone.is-open .cw,
+  .cloud-zone.is-open .cw.is-source {
     transition: none;
   }
 }
