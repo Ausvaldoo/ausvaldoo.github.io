@@ -373,7 +373,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
 .tag-result {
   grid-area: 1 / 1;
   align-self: start;
-  /* 整块只做淡入；"移动"交给 .tr-name 的 FLIP（从被点的词飞过来） */
+  /* 整块只做淡入；"移动"交给 .tr-name 的原生 View Transitions morph（见 selectTag/closeCloud） */
   animation: tr-fade 0.3s ease both;
 }
 @keyframes tr-fade {
@@ -388,8 +388,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   .tag-result {
     animation: none;
   }
-  .cloud-zone.is-open .cw,
-  .cloud-zone.is-open .cw.is-source {
+  .cloud-zone.is-open .cw {
     transition: none;
   }
 }
