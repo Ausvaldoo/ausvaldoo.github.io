@@ -1371,6 +1371,43 @@ function setupViewTransitions(router) {
   // 同一时刻只允许一个「待接管」的导航；我们自己发起的那次 go 会被放行。
   let pending = null
 
+  // 用户「实际点中的那个链接」。
+  // ⚠️ /tags 页上同一篇文章会同时出现两处：上面分类区的 .idx-list a 和
+  // 下面标签结果区的 .tr-list a。querySelectorAll 按文档序返回，find() 会抓到
+  // 分类区那个（可能在视口外很远）—— 神奇移动从一个你没看着的位置起飞，
+  // 看起来就像「没有神奇移动」。系列总览页同理只有一处，但之前干脆没被覆盖。
+  // 捕获阶段先于 VitePress 的委托监听执行，路由钩子触发时 clickedLink 已经是它。
+  // 注意：这里的 getBoundingClientRect 只用来「判断哪个元素在视口内」，
+  // 不是手搓 FLIP 动画 —— 动画本身仍完全交给原生 View Transitions。
+  let clickedLink = null
+  document.addEventListener(
+    'click',
+    (e) => {
+      clickedLink = (e.target && e.target.closest && e.target.closest('a')) || null
+    },
+    true
+  )
+
+  // 神奇移动的源选择器：被点的标题会以 vt-title 飞到文章页大标题。
+  // 新增文章入口链接时，必须把它的选择器补进这一行，否则点了不 morph。
+  const TITLE_SOURCES =
+    '.post-title, .archive-title, .idx-list a, .idx-tagrow a, .fm-title, .tr-list a, .ser-list a, .series-nav a, .series-pager a'
+  const inViewport = (a) => {
+    try {
+      const r = a.getBoundingClientRect()
+      return (
+        r.width > 0 &&
+        r.height > 0 &&
+        r.bottom > 0 &&
+        r.top < window.innerHeight &&
+        r.right > 0 &&
+        r.left < window.innerWidth
+      )
+    } catch (e) {
+      return false
+    }
+  }
+
   router.onBeforeRouteChange = (to) => {
     if (pending !== null && path(pending) === path(to)) {
       pending = null
@@ -1382,9 +1419,15 @@ function setupViewTransitions(router) {
     clearTitle()
 
     setDir(dirTo(window.location.pathname, path(to)))
-    const src = Array.from(
-      document.querySelectorAll('.post-title, .archive-title, .idx-list a, .idx-tagrow a, .fm-title, .tr-list a, .series-nav a, .series-pager a')
-    ).find((a) => a.href && path(a.href) === path(to))
+    // 源元素优先级：你点中的那个 > 视口内的第一个 > 文档序第一个。
+    // 只改「从哪儿起飞」，动画仍由原生 View Transitions 补间。
+    const candidates = Array.from(document.querySelectorAll(TITLE_SOURCES)).filter(
+      (a) => a.href && path(a.href) === path(to)
+    )
+    const src =
+      candidates.find((a) => a === clickedLink) ||
+      candidates.find(inViewport) ||
+      candidates[0]
     if (src) src.style.setProperty('view-transition-name', 'vt-title')
 
     pending = to

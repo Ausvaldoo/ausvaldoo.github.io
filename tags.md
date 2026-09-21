@@ -201,13 +201,17 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
     <p class="tr-head">
       <span class="tr-name">{{ current }}</span>
       <span class="tr-n">{{ currentList.length }} 篇</span>
-      <button class="tr-back" @click="closeCloud">返回词云</button>
+      <button class="tr-back" aria-label="返回词云" title="返回词云" @click="closeCloud">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8H3.5" /><path d="M7.5 3.5 3 8l4.5 4.5" /></svg>
+      </button>
     </p>
-    <p class="tr-list">
-      <template v-for="(p, i) in currentList" :key="p.url">
-        <span v-if="i" class="tr-sep">·</span><a :href="p.url">{{ p.title }}</a>
-      </template>
-    </p>
+    <!-- 一行一条 + 行号：29 篇挤成一段、只靠行内 · 分隔时人眼分不出边界（2026-09-21 站长反馈）。
+         双栏自适应收窄为单栏，编号用等宽小字，视觉语言与系列总览页 .ser-list 一致。 -->
+    <ol class="tr-list">
+      <li v-for="(p, i) in currentList" :key="p.url">
+        <span class="tr-i">{{ i + 1 }}</span><a :href="p.url">{{ p.title }}</a>
+      </li>
+    </ol>
   </div>
 </div>
 
@@ -414,13 +418,16 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
 }
 .tr-back {
   margin-left: auto;
-  padding: 2px 8px 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 22px;
+  padding: 0;
   cursor: pointer;
   background: none;
   border: 1px solid var(--vp-c-divider);
   border-radius: 2px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
   color: var(--vp-c-text-3);
   transition: none;
 }
@@ -428,11 +435,35 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   color: var(--rust);
   border-color: var(--rust);
 }
+.tr-back svg {
+  display: block;
+}
+/* 一行一条、双栏自适应；分隔靠行距和行号，不再用行内 ·（密集时不可辨） */
 .tr-list {
-  margin: 0;
-  font-size: 13.5px;
-  line-height: 2.05;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 0 36px;
+  font-size: 13px;
   color: var(--vp-c-text-2);
+}
+.tr-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4.5px 0;
+  line-height: 1.65;
+}
+.tr-i {
+  flex: none;
+  min-width: 1.7em;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--vp-c-text-3);
+  font-variant-numeric: tabular-nums;
 }
 .tr-list a {
   color: var(--vp-c-text-2);
@@ -443,10 +474,6 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   color: var(--rust);
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-.tr-sep {
-  margin: 0 7px;
-  color: var(--vp-c-text-3);
 }
 
 @media (max-width: 720px) {

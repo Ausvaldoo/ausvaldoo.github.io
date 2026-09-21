@@ -78,7 +78,7 @@ const POEM = [
     lines: [
       ['I must be gone: there is a grave', '我必须走了：那里有一座坟，'],
       ['Where daffodil and lily wave,', '水仙与百合在那里摇曳，'],
-      ['And I would please the hapless faun,', '我要去取悦那不幸的 faun（牧神），'],
+      ['And I would please the hapless faun,', '我要去取悦那不幸的牧神，'],
       ['Buried under the sleepy ground,', '他长眠在这沉睡的土地之下，'],
       ['With mirthful songs before the dawn.', '我要在黎明前献上欢快的歌。'],
       ['His shouting days with mirth were crowned;', '他那呐喊的岁月曾以欢笑加冕；'],
