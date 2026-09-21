@@ -224,10 +224,21 @@ function setupPoemRise() {
 
     const lines = byPhrases() || bySentence()
 
+    let lineIndex = 0
     for (const picked of lines) {
       if (!picked.length) continue
       const lineEl = document.createElement('span')
       lineEl.className = 'fm-line'
+      /* 行序号：行间错峰用（见 index.md 的 --fm-line-step）。
+         ⚠️ 与 --fm-word-i 是两个不同量纲的量，**不能互相推导**，所以分别注入：
+           · --fm-line-i 是本行在整首诗里的序号（0..3），**结构性**的，切分时就定；
+           · --fm-word-i 是**全局**词序号（0..8，跨行累加），在 play() 里才定。
+         最终 delay = 行号 × 行步长 + 全局词号 × 词步长 ——
+         行内错峰只由词步长决定（保住波浪），行与行之间额外拿到一个行步长
+         （拉开节拍）。这就是「行内是波浪、行间是节拍」两级节奏的来源。
+         custom property 会继承，所以挂在 .fm-line 上即可被 .fm-word > span 读到。 */
+      lineEl.style.setProperty('--fm-line-i', String(lineIndex))
+      lineIndex += 1
       for (const chunk of picked) {
         const w = document.createElement('span')
         w.className = 'fm-word'
@@ -249,7 +260,9 @@ function setupPoemRise() {
      但会退回「整句一块」的兜底切法（错峰单位骤减，波浪感变弱）。
      断点依据：按朗读的自然停顿 —— "夏日蓝色的 / 黄昏里"、
      "我将 / 走上 / 幽径"、"不顾 / 麦茎刺肤"、"漫步地 / 踏青"。
-     每句 2–3 块，全诗 9 块 → 错峰窗口 8 × 0.03 = 0.24s。 */
+     每句 2–3 块，全诗 **4 行 / 9 块**。错峰窗口是两级的：
+       行间 3 × 0.20s + 词内 8 × 0.03s
+     （两个步长见 index.md 的 --fm-line-step / --fm-word-step）。 */
   const PHRASES = [
     '夏日蓝色的',
     '黄昏里',
