@@ -172,12 +172,18 @@ posts/YYYY-MM-DD-english-slug.md
     ⚠️ 关键坑：返回时目标词必须**可见**（`.cloud-zone.is-open .cloud` 是 `opacity:0`）浏览器才抓得到终点快照；这里靠 update 回调里同步 `open=false` 让云淡回，
     **不需要**再手工设内联 `opacity`（手搓版才需要那个补丁）。
     过渡结束后务必 `clearTagVT()` 摘掉内联 `view-transition-name`，否则下一次导航会出现同名元素冲突。
-    标题串原位淡入：**内联排列、小字号、用 `·` 分隔**，像一段文字（`.tag-result > .tr-list`）。
-    这刻意与上面分类区的「大标题 + 宽列表」长成两样（站长原话："不要再搞得和分类一样，下面还蹦出来好多又大又多的字"）。
-    标题**常规字重、不加粗**，与分类区一致。
+    结果列表（2026-09-21 重排）：**一行一条 + 等宽行号，双栏自适应（`minmax(300px,1fr)`，窄屏单栏）**
+    （`.tag-result > .tr-list`）。旧版 29 篇挤成一段、只靠行内 `·` 分隔，人眼分不出边界（站长原话：
+    "以为还是连在一起的"）。标题**常规字重、不加粗**，字号 13px，视觉语言与系列总览页 `.ser-list` 一致。
+    「返回词云」是 **← SVG 箭头图标**（`aria-label`/`title` 仍为「返回词云」），不是文字按钮。
   - **文章标题的神奇移动是全局的** —— 点任何文章名跳到文章页，都走全站 View Transitions 的 `vt-title` 共享元素 morph（见 `theme/index.mjs` 的 `setupViewTransitions`）。
-    源选择器已覆盖：首页 `.fm-title`、归档 `.archive-title`、分类区 `.idx-list a` / `.idx-tagrow a`、标签结果 `.tr-list a`、系列导航 `.series-nav a` / `.series-pager a`、文章页 `.post-title`。
+    源选择器（`TITLE_SOURCES`）已覆盖：首页 `.fm-title`、归档 `.archive-title`、分类区 `.idx-list a` / `.idx-tagrow a`、
+    标签结果 `.tr-list a`、**系列总览 `.ser-list a`**（2026-09-21 补，此前漏了——系列页点了必不 morph）、
+    文章内系列导航 `.series-nav a` / `.series-pager a`、文章页 `.post-title`。
     **新增文章入口链接时，要把它的选择器补进 `index.mjs` 那一行**，否则点了不 morph。
+    ⚠️ **同一篇文章在一页上有多个入口时**（/tags 上既在分类区又在标签结果），源元素按
+    「**你点中的那个**（`clickedLink`，捕获阶段记录）> 视口内第一个 > 文档序第一个」挑选——
+    否则 `querySelectorAll` 按文档序抓到分类区那个，从视口外起飞＝没有神奇移动（2026-09-21 踩过）。
     **缓动（站长定的硬规矩）**：`custom.css` 里 `::view-transition-group(vt-title)` 为 `animation-duration:.42s` + `cubic-bezier(.22,1,.36,1)`，
     **官方平滑手感，任何时候都不要改成回弹/弹性曲线**。改它＝改全站神奇移动的手感，动之前先问站长。
 - 首页卡片、归档页、文章底部的分类/标签**都是链接**，点击跳到 `/tags` 的对应锚点
