@@ -1383,7 +1383,7 @@ function setupViewTransitions(router) {
 
     setDir(dirTo(window.location.pathname, path(to)))
     const src = Array.from(
-      document.querySelectorAll('.post-title, .archive-title, .idx-list a, .idx-tagrow a, .fm-title')
+      document.querySelectorAll('.post-title, .archive-title, .idx-list a, .idx-tagrow a, .fm-title, .tr-list a, .series-nav a, .series-pager a')
     ).find((a) => a.href && path(a.href) === path(to))
     if (src) src.style.setProperty('view-transition-name', 'vt-title')
 
