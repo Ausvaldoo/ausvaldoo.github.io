@@ -53,9 +53,28 @@ const cloud = tags.map(([name, list], i) => {
    内联排列、小字号，跟分类区的「大标题 + 宽列表」刻意长成两样。 */
 const current = ref('')
 const open = ref(false)
-// 被点的那个词在点击瞬间的屏幕矩形 —— 用来做「神奇移动」的 FLIP 起点
-const flyFrom = ref(null)
 const rootEl = ref(null)
+// 同页也能用浏览器原生 View Transitions：给「被点的词」和「结果标题」同一个
+// view-transition-name，浏览器原生 morph（官方/平滑的神奇移动）。不手搓 FLIP、不加反弹。
+const VT_TAG = 'vt-tagword'
+function supportsVT() {
+  try {
+    return (
+      typeof document !== 'undefined' &&
+      typeof document.startViewTransition === 'function' &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    )
+  } catch (e) {
+    return false
+  }
+}
+function clearTagVT() {
+  try {
+    document.querySelectorAll('[style*="view-transition-name"]').forEach((el) => {
+      if ((el.style.viewTransitionName || '') === VT_TAG) el.style.removeProperty('view-transition-name')
+    })
+  } catch (e) {}
+}
 const currentList = computed(() => {
   const list = tagMap[current.value]
   if (!list) return []
@@ -65,24 +84,31 @@ const currentList = computed(() => {
 function selectTag(name, ev) {
   if (!tagCount[name]) return
   current.value = name
-  // 记下被点词在点击瞬间的屏幕位置 —— 它是「神奇移动」的起点
-  let fromRect = null
-  try {
-    const el = (ev && ev.currentTarget) || document.getElementById('tag-' + name)
-    if (el) fromRect = el.getBoundingClientRect()
-  } catch (e) {
-    /* 某些沙箱拿不到 currentTarget，退化为无 FLIP（只剩淡入） */
-  }
-  flyFrom.value = fromRect
-  open.value = true
-  // replaceState 而不是 location.hash：后者会触发一次跳转滚动，
-  // 点个标签就被弹走半屏，很不体面。
   try {
     history.replaceState(null, '', '#tag-' + name)
   } catch (e) {
-    /* 某些沙箱 / 预览环境禁用 history，退化为「只有状态、没有锚点」，不影响使用 */
+    /* 预览环境禁用 history 时退化为「只有状态、没有锚点」 */
   }
-  nextTick(playMagicMove)
+  const el = (ev && ev.currentTarget) || document.getElementById('tag-' + name)
+  if (supportsVT() && el) {
+    clearTagVT()
+    // 旧帧：被点的词带名字，飞向标题
+    el.style.setProperty('view-transition-name', VT_TAG)
+    try {
+      const vt = document.startViewTransition(async () => {
+        open.value = true
+        await nextTick()
+        const nameEl = rootEl.value && rootEl.value.querySelector('.tr-name')
+        if (nameEl) nameEl.style.setProperty('view-transition-name', VT_TAG)
+        el.style.removeProperty('view-transition-name') // 新帧只留标题带名字
+      })
+      vt.finished.finally(() => clearTagVT())
+      return
+    } catch (e) {
+      clearTagVT()
+    }
+  }
+  open.value = true
 }
 function closeCloud() {
   try {
@@ -94,36 +120,24 @@ function closeCloud() {
   const nameEl = root && root.querySelector('.tr-name')
   const target =
     typeof document !== 'undefined' ? document.getElementById('tag-' + current.value) : null
-  let reduce = false
-  try {
-    reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  } catch (e) {
-    /* 无 matchMedia 时不拦截 */
+  if (supportsVT() && nameEl && target) {
+    clearTagVT()
+    // 旧帧：标题带名字，飞回原词
+    nameEl.style.setProperty('view-transition-name', VT_TAG)
+    try {
+      const vt = document.startViewTransition(async () => {
+        open.value = false
+        await nextTick()
+        target.style.setProperty('view-transition-name', VT_TAG)
+        nameEl.style.removeProperty('view-transition-name') // 新帧只留原词带名字
+      })
+      vt.finished.finally(() => clearTagVT())
+      return
+    } catch (e) {
+      clearTagVT()
+    }
   }
-  // 飞行途中让词云淡回可见：否则目标词处于 opacity:0，标题像飞进虚空而非落回那个词
-  const cloudEl = root && root.querySelector('.cloud')
-  if (nameEl && target && !reduce && cloudEl) {
-    cloudEl.style.opacity = '1'
-    // 反向神奇移动：标题飞回它来自的那个词
-    const f = nameEl.getBoundingClientRect()
-    const to = target.getBoundingClientRect()
-    const dx = to.left + to.width / 2 - (f.left + f.width / 2)
-    const dy = to.top + to.height / 2 - (f.top + f.height / 2)
-    const sx = to.width / f.width
-    const sy = to.height / f.height
-    nameEl.style.transition = 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)'
-    nameEl.style.transformOrigin = 'center'
-    nameEl.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')'
-    // 飞完再卸载面板；清掉内联 opacity 交还 CSS（下次点开仍会淡出），保留"返回词云"动作
-    setTimeout(() => {
-      cloudEl.style.opacity = ''
-      open.value = false
-      flyFrom.value = null
-    }, 520)
-  } else {
-    open.value = false
-    flyFrom.value = null
-  }
+  open.value = false
 }
 /* 神奇移动（FLIP）：被点的词「飞」到成为标题 `.tr-name`。
    借用全站标题切页的缓动 cubic-bezier(0.22,1,0.36,1)，再加一点迪士尼式回弹
