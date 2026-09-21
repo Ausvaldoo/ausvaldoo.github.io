@@ -139,36 +139,7 @@ function closeCloud() {
   }
   open.value = false
 }
-/* 神奇移动（FLIP）：被点的词「飞」到成为标题 `.tr-name`。
-   借用全站标题切页的缓动 cubic-bezier(0.22,1,0.36,1)，再加一点迪士尼式回弹
-   cubic-bezier(0.34,1.56,0.64,1) 做"加速—到位—反弹"。reduced-motion 直接跳过。 */
-function playMagicMove() {
-  if (!flyFrom.value) return
-  try {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-  } catch (e) {
-    /* 无 matchMedia 时不拦截 */
-  }
-  const root = rootEl.value
-  if (!root) return
-  const nameEl = root.querySelector('.tr-name')
-  if (!nameEl) return
-  const f = flyFrom.value
-  const to = nameEl.getBoundingClientRect()
-  const dx = f.left + f.width / 2 - (to.left + to.width / 2)
-  const dy = f.top + f.height / 2 - (to.top + to.height / 2)
-  const sx = f.width / to.width
-  const sy = f.height / to.height
-  nameEl.style.transition = 'none'
-  nameEl.style.transformOrigin = 'center'
-  nameEl.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')'
-  // 强制 reflow 让起点生效，再下一帧放开过渡
-  void nameEl.offsetWidth
-  requestAnimationFrame(() => {
-    nameEl.style.transition = 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)'
-    nameEl.style.transform = 'none'
-  })
-}
+
 function readHash() {
   const raw = (typeof location === 'undefined' ? '' : location.hash || '').replace(/^#/, '')
   let h = raw
@@ -180,7 +151,6 @@ function readHash() {
   if (h.slice(0, 4) === 'tag-' && tagCount[h.slice(4)]) {
     current.value = h.slice(4)
     open.value = true
-    nextTick(playMagicMove)
   }
 }
 onMounted(() => {
@@ -392,7 +362,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   vertical-align: 0.35em;
 }
 /* 点词后整片云淡出（不再"散开飞走"），把位置让给结果面板；
-   被点的那个词用 FLIP 飞过去"变成" .tr-name 标题（见 playMagicMove）。
+   被点的词与 .tr-name 标题共用 view-transition-name，由原生 View Transitions 做 morph（见 selectTag/closeCloud）。
    返回时云再淡入 —— 保留"返回词云"那个动作。 */
 .cloud-zone.is-open .cloud {
   opacity: 0;
