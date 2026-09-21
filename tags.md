@@ -29,18 +29,8 @@ const tags = Object.entries(tagMap).sort(byCount)
 const tagCount = {}
 for (const [name, list] of tags) tagCount[name] = list.length
 
-/* ---------- 星座索引 · 第 1 层：频谱 ----------
-   23 个标签平铺成 23 行「标签 + 全部标题」，读起来是一堵墙：
-   标签区会占掉整页 5 屏，而 64 篇文章的标题被重复渲染 3 遍还多。
-   于是这里只保留「这个站在谈什么」—— 一行两档，点谁聚焦谁。 */
-const CORE_N = 10
-const coreTags = tags.filter(([, list]) => list.length >= CORE_N)
-const restTags = tags.filter(([, list]) => list.length < CORE_N)
-
-/* ---------- 星座索引 · 第 2 层：共现 ----------
-   关系照旧被表达，只是用「可排序的一维排行」而不是二维图。
-   理由：23 节点 / 88 条边的力导向图，密度是经验可读阈值(≈0.1)的 3.5 倍，
-   且每次重排都会得到不同拓扑 —— 不可复现的图形不能被引用、也记不住。 */
+/* ---------- 共现（决定星图里谁和谁连成线） ----------
+   同一篇文章的标签两两成一对，共现越多的标签在星图里线段越亮越粗。 */
 const pairW = {}
 for (const p of posts) {
   const ts = [...p.tags].sort() // 排序后取对，保证 (甲,乙) 与 (乙,甲) 落进同一个键
@@ -66,63 +56,76 @@ const byWeight = (x, y) =>
   y[1] - x[1] || tagCount[y[0]] - tagCount[x[0]] || String(x[0]).localeCompare(String(y[0]), 'zh')
 for (const name of Object.keys(neighbors)) neighbors[name].sort(byWeight)
 
-/* ---------- 星座索引 · 第 3 层：聚焦 ---------- */
-const names = tags.map(([name]) => name)
-const current = ref(names[0] || '')
+/* ---------- 星图布局：向日葵（phyllotaxis）分布 ----------
+   23 个标签按黄金角铺在一个圆盘上 —— 这是完全确定的（只依赖于「第几个」），
+   所以每次构建都长得一模一样，可被引用、能记住。力导向图每次都不一样，
+   不能要。节点大小 ∝ √篇数；共现 ≥2 的对之间连成暗线，就成了「星座」。 */
+const VB = 760
+const GOLD = Math.PI * (3 - Math.sqrt(5)) // 黄金角 ≈ 2.39996 rad
+const CX = VB / 2
+const CY = VB / 2
+const RMAX = 300
+const pos = tags.map(([name, list], k) => {
+  const a = k * GOLD
+  const rr = RMAX * Math.sqrt((k + 0.5) / tags.length)
+  const x = CX + rr * Math.cos(a)
+  const y = CY + rr * Math.sin(a)
+  const rad = 6 + Math.sqrt(list.length) * 2.6
+  const dx = x - CX
+  const dy = y - CY
+  const len = Math.hypot(dx, dy) || 1
+  const ux = dx / len
+  const uy = dy / len
+  return {
+    name,
+    count: list.length,
+    x,
+    y,
+    rad,
+    lx: x + ux * (rad + 7),
+    ly: y + uy * (rad + 7) + 3.5,
+    anchor: ux > 0.25 ? 'start' : ux < -0.25 ? 'end' : 'middle'
+  }
+})
+const nodeMap = {}
+for (const p of pos) nodeMap[p.name] = p
 
+const EDGE_MIN = 2
+const edges = []
+for (const k of Object.keys(pairW)) {
+  const sep = k.indexOf('\u0000')
+  const a = k.slice(0, sep)
+  const b = k.slice(sep + 1)
+  const w = pairW[k]
+  if (w < EDGE_MIN) continue
+  const na = nodeMap[a]
+  const nb = nodeMap[b]
+  if (!na || !nb) continue
+  edges.push({ x1: na.x, y1: na.y, x2: nb.x, y2: nb.y, w })
+}
+const maxEdgeW = Math.max(1, ...edges.map((e) => e.w))
+function edgeOp(w) {
+  return (0.1 + 0.55 * (w / maxEdgeW)).toFixed(2)
+}
+function edgeSw(w) {
+  return (0.5 + 1.7 * (w / maxEdgeW)).toFixed(2)
+}
+
+/* ---------- 聚焦 = 可链接的状态 ----------
+   文章底部的标签是链接，指向 /tags#tag-权力 这种锚点（全站 62 处）。
+   星图里每个圆圈都带 `id="tag-<名>"`，所以锚点仍然存在、深链仍跳得进来，
+   落点也正好是那个标签对应的圆圈。 */
+const current = ref(tags.length ? tags[0][0] : '')
 const currentList = computed(() => {
   const list = tagMap[current.value]
   if (!list) return []
   // 日期降序。posts.data.js 已排过，这里再排一次是为了不依赖上游的顺序约定。
-  return [...list].sort((a, b) => String(b.date).localeCompare(String(a.date)))
+  // filter(Boolean) 兜底：万一数据里混进 undefined，也不至于让整页 SSR 崩掉。
+  return [...list].filter(Boolean).sort((a, b) => String(b.date).localeCompare(String(a.date)))
 })
 const currentNbrs = computed(() => (neighbors[current.value] || []).slice(0, 6))
 const othersOf = (p) => p.tags.filter((t) => t !== current.value)
 
-const starOn = ref(false)
-
-/* ---------- 邻域星图：定角布局，不用力导向 ----------
-   只有 1 个中心 + ≤6 个邻居时，方位可以是「定」的：邻居按共现强度降序
-   铺在八个固定方位上，半径由强度决定（越强越靠内）。
-   所以它可复现 —— 两次刷新长得一模一样，也永远不会互相穿插。 */
-const UNIT = [
-  [0.62, -0.79],
-  [0.95, -0.31],
-  [0.95, 0.31],
-  [0.62, 0.79],
-  [-0.62, 0.79],
-  [-0.95, 0.31],
-  [-0.95, -0.31],
-  [-0.62, -0.79]
-]
-const star = computed(() => {
-  const nb = currentNbrs.value
-  const S = 232
-  const C = S / 2
-  const ROUT = 84
-  const maxW = Math.max(1, ...nb.map((x) => x[1]))
-  const items = nb.map(([name, w], k) => {
-    const u = UNIT[k % UNIT.length]
-    const rr = ROUT - (Math.log(1 + w) / Math.log(1 + maxW)) * 24
-    return {
-      name,
-      w,
-      x: C + u[0] * rr,
-      y: C + u[1] * rr,
-      r: 3.4 + Math.sqrt(tagCount[name]) * 1.3,
-      ax: u[0],
-      ay: u[1],
-      op: (0.16 + (0.6 * w) / maxW).toFixed(2),
-      sw: (0.6 + (1.7 * w) / maxW).toFixed(2)
-    }
-  })
-  return { S, C, items, cr: 5.6 + Math.sqrt(currentList.value.length) * 1.8 }
-})
-
-/* ---------- 聚焦 = 可链接的状态 ----------
-   文章底部的标签是链接，指向 /tags#tag-权力 这种锚点（全站 62 处）。
-   星座索引一次只渲染一个标签，所以锚点必须挂在「频谱的 chip」上：
-   这样锚点仍然存在、深链仍然跳得进来，落点也正好是那个标签。 */
 function selectTag(name) {
   if (!tagCount[name]) return
   current.value = name
@@ -177,53 +180,39 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
 
 <h2 class="idx-h2">标签</h2>
 
-<p class="tn-lede">
-  标签是浏览入口，不是目录。全部 {{ tags.length }} 个标签按篇数分两档列在下面，
-  <strong>点一个，只看那一个</strong>；右上「星图」能看它旁边常站着谁。
-</p>
-
-<div class="tn-tier">
-  <p class="tn-tier-h">核心主题 · ≥{{ CORE_N }} 篇</p>
-  <div class="tn-chips">
-    <button
-      v-for="[name, list] in coreTags"
-      :id="`tag-${name}`"
-      :key="name"
-      class="tn-chip"
-      :class="{ 'is-on': current === name }"
-      @click="selectTag(name)"
+<div class="tn-starwrap">
+  <svg class="tn-star" :viewBox="`0 0 ${VB} ${VB}`" role="group" aria-label="标签星图：点一个圆圈，看它下面的文章">
+    <g class="tn-edges">
+      <line
+        v-for="(e, i) in edges"
+        :key="'e' + i"
+        class="tn-edge"
+        :x1="e.x1.toFixed(1)"
+        :y1="e.y1.toFixed(1)"
+        :x2="e.x2.toFixed(1)"
+        :y2="e.y2.toFixed(1)"
+        :stroke-opacity="edgeOp(e.w)"
+        :stroke-width="edgeSw(e.w)"
+      />
+    </g>
+    <g
+      v-for="p in pos"
+      :key="p.name"
+      :id="`tag-${p.name}`"
+      class="tn-node"
+      :class="{ 'is-on': current === p.name }"
+      @click="selectTag(p.name)"
     >
-      {{ name }}<span class="tn-cn">{{ list.length }}</span>
-    </button>
-  </div>
-</div>
-<div class="tn-tier">
-  <p class="tn-tier-h">其余主题</p>
-  <div class="tn-chips">
-    <button
-      v-for="[name, list] in restTags"
-      :id="`tag-${name}`"
-      :key="name"
-      class="tn-chip"
-      :class="{ 'is-on': current === name }"
-      @click="selectTag(name)"
-    >
-      {{ name }}<span class="tn-cn">{{ list.length }}</span>
-    </button>
-  </div>
+      <circle class="tn-dot" :cx="p.x.toFixed(1)" :cy="p.y.toFixed(1)" :r="p.rad.toFixed(1)" />
+      <text class="tn-lab" :x="p.lx.toFixed(1)" :y="p.ly.toFixed(1)" :text-anchor="p.anchor">{{ p.name }}</text>
+    </g>
+  </svg>
 </div>
 
-<div class="tn-panel">
-  <div class="tn-head">
-    <div class="tn-info">
-      <div class="tn-title">
-        <h2 class="tn-name">{{ current }}</h2>
-        <span class="tn-num">{{ currentList.length }} 篇</span>
-        <button class="tn-toggle" :class="{ 'is-on': starOn }" @click="starOn = !starOn">
-          {{ starOn ? '收起星图' : '星图' }}
-        </button>
-      </div>
-      <p class="tn-rel">
+<div class="tn-panel-in" :key="current">
+    <div class="tn-head">
+      <h2 class="tn-name">{{ current }}<span class="tn-num">{{ currentList.length }} 篇</span></h2>
+      <p v-if="currentNbrs.length" class="tn-rel">
         <span class="tn-relh">常与它一起出现</span>
         <button
           v-for="[name, w] in currentNbrs"
@@ -234,52 +223,21 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
         >
           {{ name }}<span class="tn-rn">{{ w }}</span>
         </button>
-        <span v-if="!currentNbrs.length" class="tn-norel">没有共现对象</span>
       </p>
+      <p v-else class="tn-norel">没有共现对象</p>
     </div>
-    <div v-if="starOn" class="tn-star">
-      <svg :viewBox="`0 0 ${star.S} ${star.S}`" role="img" :aria-label="`${current} 的共现邻域`">
-        <g v-for="it in star.items" :key="it.name" class="tn-svg-node" @click="selectTag(it.name)">
-          <line
-            class="tn-svg-edge"
-            :x1="star.C"
-            :y1="star.C"
-            :x2="it.x.toFixed(1)"
-            :y2="it.y.toFixed(1)"
-            :stroke-opacity="it.op"
-            :stroke-width="it.sw"
-          />
-          <line class="tn-svg-hit" :x1="star.C" :y1="star.C" :x2="it.x.toFixed(1)" :y2="it.y.toFixed(1)" />
-          <circle class="tn-svg-dot" :cx="it.x.toFixed(1)" :cy="it.y.toFixed(1)" :r="it.r.toFixed(1)" />
-          <text class="tn-svg-w" :x="it.x.toFixed(1)" :y="(it.y + 3.3).toFixed(1)">{{ it.w }}</text>
-          <text
-            class="tn-svg-lab"
-            :x="(it.x + it.ax * (it.r + 5)).toFixed(1)"
-            :y="(it.y + it.ay * (it.r + 5) + 3.5).toFixed(1)"
-            :text-anchor="it.ax > 0 ? 'start' : 'end'"
-          >
-            {{ it.name }}
-          </text>
-        </g>
-        <circle class="tn-svg-core" :cx="star.C" :cy="star.C" :r="star.cr.toFixed(1)" />
-        <text class="tn-svg-corew" :x="star.C" :y="star.C + 3.3">{{ currentList.length }}</text>
-      </svg>
-      <p class="tn-starcap">中心＝当前标签 · 半径＝共现强度（越近越强） · 圆面积＝篇数</p>
-    </div>
+    <ul class="tn-list">
+      <li v-for="p in currentList" :key="p.url">
+        <div class="tn-row">
+          <span class="tn-date">{{ p.date }}</span>
+          <a class="tn-ptitle" :href="p.url">{{ p.title }}</a>
+        </div>
+        <p v-if="othersOf(p).length" class="tn-ptags">
+          <button v-for="t in othersOf(p)" :key="t" @click="selectTag(t)">{{ t }}</button>
+        </p>
+      </li>
+    </ul>
   </div>
-
-  <ul class="tn-list">
-    <li v-for="p in currentList" :key="p.url">
-      <div class="tn-row">
-        <span class="tn-date">{{ p.date }}</span>
-        <a class="tn-ptitle" :href="p.url">{{ p.title }}</a>
-      </div>
-      <p v-if="othersOf(p).length" class="tn-ptags">
-        <button v-for="t in othersOf(p)" :key="t" @click="selectTag(t)">{{ t }}</button>
-      </p>
-    </li>
-  </ul>
-</div>
 
 <style scoped>
 .idx-count {
@@ -395,101 +353,86 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   text-underline-offset: 3px;
 }
 
-/* ============ 标签频谱 ============ */
-.tn-lede {
-  margin: 14px 0 0;
-  font-size: 14px;
-  line-height: 1.85;
-  color: var(--vp-c-text-2);
+/* ============ 标签星图 ============ */
+.tn-starwrap {
+  margin-top: 16px;
+  max-width: 760px;
 }
-.tn-lede strong {
-  font-weight: 700;
-  color: var(--vp-c-text-1);
+.tn-star {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
 }
-.tn-tier {
-  margin-top: 20px;
+.tn-edge {
+  stroke: var(--vp-c-divider);
 }
-.tn-tier-h {
-  display: flex;
-  align-items: baseline;
-  gap: 9px;
-  margin: 0 0 10px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.18em;
-  color: var(--vp-c-text-3);
-}
-.tn-tier-h::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--vp-c-divider);
-}
-.tn-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px 8px;
-}
-.tn-chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
-  padding: 3px 9px 4px;
+.tn-node {
   cursor: pointer;
-  background: transparent;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 2px;
+}
+.tn-dot {
+  fill: var(--vp-c-bg-elv);
+  stroke: var(--vp-c-text-3);
+  stroke-width: 1.1;
+  transition: fill 0.18s ease, stroke 0.18s ease;
+}
+.tn-node:hover .tn-dot {
+  fill: var(--rust);
+  stroke: var(--rust);
+}
+.tn-node.is-on .tn-dot {
+  fill: var(--vp-c-brand-1);
+  stroke: var(--vp-c-brand-1);
+}
+.tn-lab {
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--vp-c-text-2);
-  transition: none;
-  /* 深链落点：跟着导航栏下面的留白，别被顶栏盖住 */
-  scroll-margin-top: 84px;
+  font-size: 11px;
+  fill: var(--vp-c-text-2);
+  pointer-events: none;
+  transition: fill 0.18s ease;
 }
-.tn-chip:hover {
-  border-color: var(--rust);
-  color: var(--rust);
+.tn-node:hover .tn-lab {
+  fill: var(--rust);
 }
-/* 选中态用「品牌色底 + 纸色字」，而不是写死一对颜色：
-   明暗两套主题里 --vp-c-brand-1 与 --vp-c-bg 是成对翻转的，对比度两套都成立。 */
-.tn-chip.is-on {
-  background: var(--vp-c-brand-1);
-  border-color: var(--vp-c-brand-1);
-  color: var(--vp-c-bg);
-}
-.tn-cn {
-  font-size: 10.5px;
-  color: var(--vp-c-text-3);
-  font-variant-numeric: tabular-nums;
-}
-.tn-chip.is-on .tn-cn {
-  color: var(--vp-c-bg);
-  opacity: 0.72;
+.tn-node.is-on .tn-lab {
+  fill: var(--vp-c-brand-1);
 }
 
-/* ============ 聚焦面板 ============ */
-.tn-panel {
-  margin-top: 34px;
-  padding-top: 24px;
+/* ============ 文章面板（点圆圈后弹出） ============ */
+.tn-panel-in {
+  margin-top: 30px;
+  padding-top: 22px;
   border-top: 1px solid var(--vp-c-text-1);
+  /* 神奇移动：面板带 :key="current"，每次切换标签都会新建这个节点，
+     于是下面的入场动画重新播放 —— 内容像「形变」一样滑入，而不是硬切。
+     用 CSS 动画而非 <Transition>，是为了让首屏 SSR 也能正常输出内容。 */
+  animation: mm-in 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes mm-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tn-panel-in {
+    animation: none;
+  }
 }
 .tn-head {
   display: flex;
-  gap: 30px;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 12px;
 }
-.tn-info {
-  flex: 1;
-  min-width: 0;
-}
-.tn-title {
+.tn-name {
   display: flex;
   align-items: baseline;
   gap: 12px;
   flex-wrap: wrap;
-}
-.tn-name {
   margin: 0;
   padding: 0;
   border: none;
@@ -506,24 +449,8 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   color: var(--vp-c-text-3);
   font-variant-numeric: tabular-nums;
 }
-.tn-toggle {
-  margin-left: auto;
-  padding: 3px 9px 4px;
-  cursor: pointer;
-  background: transparent;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 2px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--vp-c-text-3);
-}
-.tn-toggle:hover,
-.tn-toggle.is-on {
-  border-color: var(--rust);
-  color: var(--rust);
-}
 .tn-rel {
-  margin: 16px 0 0;
+  margin: 0;
   line-height: 2.1;
 }
 .tn-relh {
@@ -573,78 +500,10 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   color: var(--vp-c-text-3);
 }
 
-/* ============ 邻域星图 ============ */
-.tn-star {
-  flex: none;
-  width: 232px;
-}
-.tn-star svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  overflow: visible;
-}
-.tn-svg-node {
-  cursor: pointer;
-}
-.tn-svg-edge {
-  stroke: var(--vp-c-brand-1);
-}
-.tn-svg-hit {
-  stroke: transparent;
-  stroke-width: 12;
-}
-.tn-svg-dot {
-  fill: var(--vp-c-bg-elv);
-  stroke: var(--vp-c-brand-1);
-  stroke-width: 1.1;
-  transition: none;
-}
-.tn-svg-node:hover .tn-svg-dot {
-  fill: var(--vp-c-brand-1);
-}
-.tn-svg-w {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  fill: var(--vp-c-brand-1);
-  text-anchor: middle;
-  pointer-events: none;
-}
-.tn-svg-node:hover .tn-svg-w {
-  fill: var(--vp-c-bg);
-}
-.tn-svg-lab {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  fill: var(--vp-c-text-2);
-}
-.tn-svg-node:hover .tn-svg-lab {
-  fill: var(--vp-c-brand-1);
-}
-.tn-svg-core {
-  fill: var(--vp-c-brand-1);
-  pointer-events: none;
-}
-.tn-svg-corew {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  fill: var(--vp-c-bg);
-  text-anchor: middle;
-  pointer-events: none;
-}
-.tn-starcap {
-  margin: 6px 0 0;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  line-height: 1.7;
-  letter-spacing: 0.02em;
-  color: var(--vp-c-text-3);
-}
-
-/* ============ 聚焦文章列表 ============ */
+/* ============ 文章列表 ============ */
 .tn-list {
   list-style: none;
-  margin: 20px 0 0;
+  margin: 18px 0 0;
   padding: 0;
 }
 .tn-list li {
@@ -668,11 +527,12 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   color: var(--vp-c-text-3);
   font-variant-numeric: tabular-nums;
 }
+/* 文章标题与分类区保持一致：常规字重，不抢戏。 */
 .tn-ptitle {
   flex: 1;
   min-width: 0;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1.55;
   color: var(--vp-c-text-1);
   text-decoration: none;
@@ -685,7 +545,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
 }
 /* 这篇文章的「其他标签」：就是横向跳转的入口。
    用按钮而不是链接 —— 它改变的是本页状态，不产生新地址，也不该被
-   搜索引擎当成 64 个重复入口。 */
+   搜索引擎当成重复入口。 */
 .tn-ptags {
   margin: 1px 0 0 98px;
   font-size: 11px;
@@ -709,14 +569,8 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
 }
 
 @media (max-width: 720px) {
-  .tn-head {
-    flex-wrap: wrap;
-  }
-  .tn-star {
-    width: 100%;
-  }
-  .tn-star svg {
-    max-width: 232px;
+  .tn-starwrap {
+    max-width: 100%;
   }
   .tn-ptags {
     margin-left: 0;
