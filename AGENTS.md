@@ -249,6 +249,17 @@ git push origin main
 - 推送后 GitHub Actions（`.github/workflows/deploy.yml`）自动 `npm ci && npm run build` 并发布。
 - 部署要 1~2 分钟。想确认上线，别信"推送成功"，直接探测线上：
   `curl.exe -s -o /dev/null -w "%{http_code}" https://ausvaldoo.github.io/posts/<slug>`（`gh` 命令本机没装）。
+- ⚠️ **也别信 CI 绿灯。** Actions 的 `success` 只说明构建产物生成成功，**不等于** CDN 已换内容
+  （还有 1~2 分钟部署 + CDN 缓存窗口）。判定标准是「**线上取回来的文件里有没有你那行改动**」。
+- ⚠️ **探测线上样式时必须顺着 CSS 走。** VitePress 会把 `.md` 里的 `<style>` **抽进独立 CSS 资产**
+  （`assets/style.<hash>.css`），首页 HTML 里**一个字都没有**。拿样式 token 去 grep HTML 必然 MISS
+  —— 那是**假阴性，不是没上线**（2026-09-21 差点据此误报「线上还是旧版」）。
+  正确顺序：取 HTML → 解析 `<link rel="stylesheet">` → 逐个下载 → 搜 token。
+- 现成脚本（都在 `_blog-probe/`，只读、不改任何东西）：
+  | 脚本 | 用途 |
+  |---|---|
+  | `_ci_watch.py <sha前缀>` | 轮询某个 commit 的 Actions run，直到 completed 并回报 conclusion |
+  | `_verify_live_poem.py` | 顺着 CSS 资产验证线上首页的两级错峰样式是否已生效 |
 
 ### 4.0 本地看效果时的一个坑（2026-09-13 踩到）
 
