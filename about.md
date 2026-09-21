@@ -123,11 +123,15 @@ function canFish() {
 
 function measure() {
   const kids = box.children
+  // ⚠️ 坐标必须统一到「相对 .poem-body 顶部」。kids[i].offsetTop 是相对 offsetParent（body 之类），
+  // 而 onMove 里的 my = e.clientY - box.getBoundingClientRect().top 是「相对 .poem-body 顶部」。
+  // 两者差一个 box.offsetTop，不减的话放大行会整体偏上、光标贴哪行哪行不放大 —— 正是之前那个 bug。
+  const boxTop = box.offsetTop
   rows = []
   for (let i = 0; i < kids.length; i++) {
     rows.push({
       el: kids[i],
-      top: kids[i].offsetTop,
+      top: kids[i].offsetTop - boxTop,
       h: kids[i].offsetHeight,
       s: 1, o: 0, ts: 1, to: 0, t: ''
     })
@@ -245,11 +249,18 @@ onBeforeUnmount(() => {
 </div>
 
 <style scoped>
-/* 整首诗落页面正中：定宽列 + 水平居中。 */
+/* 整首诗落页面正中：定宽列 + 水平居中；并用 flex 把诗在「导航栏以下」的区域里垂直居中。
+   关于页没有左/右侧栏（sidebar 为空、且本页无 markdown 标题故不生成 outline 右栏），
+   所以这首诗在屏幕上是真正居中的 —— 只有顶部那条固定导航占 ~64px。 */
 .poem {
   max-width: 760px;
-  margin: 3vh auto;
+  margin: 0 auto;
+  min-height: calc(100vh - var(--vp-nav-height, 64px) - 48px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   text-align: center;
+  padding: 24px 16px;
 }
 
 .poem-head {
