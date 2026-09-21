@@ -85,7 +85,7 @@ const POEM = [
       ['And still I dream he treads the lawn,', '我仍梦见他在草坪上行走，'],
       ['Walking ghostly in the dew,', '在露水中如幽灵般踱步，'],
       ['Pierced by my glad singing through,', '被我的欢歌穿透，'],
-      ['My songs of old earth\u2019s dreamy youth:', '我歌唱古老大地如梦的青春：'],
+      ['My songs of old earth’s dreamy youth:', '我歌唱古老大地如梦的青春：'],
       ['But ah! she dreams not now; dream thou!', '可是啊！她如今不再做梦了；你来做梦吧！'],
       ['For fair are poppies on the brow:', '因为额上的罂粟是美丽的：'],
       ['Dream, dream, for this is also sooth.', '做梦吧，做梦吧，因为这同样是实情。']
@@ -126,6 +126,11 @@ let focusYTarget = 0
 let focusedIdx = -1
 let rafId = 0
 
+// 快速移动冻结用的状态：记下上一帧的指针位置与时间，算瞬时速度。
+let lastX = 0
+let lastY = 0
+let lastT = 0
+
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v)
 
 /* 只在「精确指针 + 允许动效」时启用。
@@ -154,10 +159,32 @@ function clampFocus(y) {
 function onMove(e) {
   const rect = wheelEl.getBoundingClientRect()
   const y = e.clientY - rect.top
+  const now = e.timeStamp || (typeof performance !== 'undefined' ? performance.now() : Date.now())
+  // 算瞬时速度（像素/毫秒）。鼠标「快速甩动」时速度极高，
+  // 这时候即便更新了目标，眼睛也跟不上、没意义 —— 直接冻结，
+  // 画面停在原地，等指针慢下来再恢复。这就是「动得快就别动」。
+  if (lastT) {
+    const dt = Math.max(8, now - lastT) // 下限 8ms：避免极端情况下除零或跳变
+    const v = Math.abs(y - lastY) / dt
+    if (v > 1.5) {
+      lastT = now
+      lastY = y
+      lastX = e.clientX
+      return
+    }
+  }
+  lastT = now
+  lastY = y
+  lastX = e.clientX
   // 光标在容器里的高度比 = 全诗的进度。把整段行程映射到全诗，
   // 所以「鼠标缓缓下移 → 诗缓缓上滚」，且来回都是连续的、可逆的。
   target = clamp01(y / rect.height) * maxOffset
   focusYTarget = clampFocus(y)
+}
+
+function onLeave() {
+  // 指针离开后清空速度基线，下次进入重新计速，避免「残留速度」误判
+  lastT = 0
 }
 
 function onKeys(e) {
@@ -204,24 +231,30 @@ function paint() {
     if (best >= 0) recs[best].el.classList.add('is-focus')
   }
 
-  // 第二遍：上变换。聚焦行「钉」在最前，其余按距离连续衰减 ——
-  // 所以任何时刻都恰好有一行站在最前面，不会有两行并列。
+  // 第二遍：上变换。聚焦行「钉」在最前，其余按距离显著后退、压暗、缩小 ——
+  // 任何时刻都恰好有一行站在最前面，不会有两行并列；同时前后的差距
+  // 拉得很大，读者一眼就能看出「现在读的是哪一行」。
   for (let i = 0; i < recs.length; i++) {
     const rec = recs[i]
     const cy = pad + rec.top + rec.h / 2 - shown // 该行中心在容器里的 y
     const d = cy - focusY
-    // 旋转按整屏连续算（卷轴的曲面要连贯）；放大/压暗用更窄的半径（焦点更锐）
+    const isB = i === best
+    // 旋转按整屏连续算（卷轴的曲面要连贯）；放大/压暗/前后用更窄的半径（焦点更锐）
     const nd = Math.max(-1.7, Math.min(1.7, d / half))
-    const an = Math.min(1, Math.abs(d) / (half * 0.62))
-
-    const rot = -Math.max(-1, Math.min(1, nd)) * 20
-    const scl = i === best ? 1.2 : 1 + (1 - an) * 0.2
-    const t = 'rotateX(' + rot.toFixed(2) + 'deg) scale(' + scl.toFixed(3) + ')'
+    const an = Math.min(1, Math.abs(d) / (half * 0.55))
+    const rot = -Math.max(-1, Math.min(1, nd)) * 14
+    // 焦点行：明显放大 + 前移 + 上提（翻译行因此与上一行中文拉开间距）
+    const scl = isB ? 1.5 : 0.84 + (1 - an) * 0.14
+    const z = isB ? 34 : -8 - (1 - an) * 40
+    const ty = isB ? 12 : 0
+    const t =
+      'rotateX(' + rot.toFixed(2) + 'deg) translateZ(' + z.toFixed(1) + 'px) translateY(' + ty + 'px) scale(' + scl.toFixed(3) + ')'
     if (rec.t !== t) {
       rec.el.style.transform = t
       rec.t = t
     }
-    const o = i === best ? 1 : Math.round((1 - an * 0.62) * 100) / 100
+    // 远端压到 0.16，近端约 0.56，焦点 1 —— 三个档次的亮度差一眼可辨
+    const o = isB ? 1 : Math.round((0.16 + (1 - an) * 0.4) * 100) / 100
     if (rec.o !== o) {
       rec.el.style.opacity = o
       rec.o = o
@@ -265,6 +298,7 @@ onMounted(() => {
     paint()
   })
   wheelEl.addEventListener('pointermove', onMove)
+  wheelEl.addEventListener('pointerleave', onLeave)
   wheelEl.addEventListener('keydown', onKeys)
   rafId = requestAnimationFrame(tick)
 })
@@ -298,16 +332,17 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </div>
-
-  <p class="pl-hint">移动鼠标读诗 · 停在哪一行，那一行就会浮上来，并显出英文</p>
 </div>
 
 <style scoped>
 .poem {
   /* 滚轮视口高度。行高的定值（--wh/2 的居中垫高）由它推出，
      所以它必须是一个「样式里能算出来」的长度，不能只在 JS 里知道。 */
-  --wh: clamp(360px, 62vh, 660px);
-  margin-top: 6px;
+  --wh: clamp(340px, 60vh, 620px);
+  /* 整首诗落在页面正中：定宽列 + 水平居中，标题与正文均居中。 */
+  max-width: 760px;
+  margin: 3vh auto;
+  text-align: center;
 }
 
 .poem-head {
@@ -346,6 +381,8 @@ onBeforeUnmount(() => {
 .wheel {
   position: relative;
   height: var(--wh);
+  margin: 0 auto;
+  max-width: 720px;
   overflow: hidden;
   perspective: 1100px;
   /* 上下渐隐：像真滚轮那样从边缘「化」进纸里。
@@ -431,22 +468,12 @@ onBeforeUnmount(() => {
   transform: translateY(5px);
   transition: opacity 0.26s ease, transform 0.26s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
+/* 聚焦时英文显出：缩进半字，明确它是「本行中文的翻译」而非上一行的。 */
 .pl-row.is-focus .pl-en {
   opacity: 1;
   transform: none;
-}
-
-.pl-hint {
-  margin: 20px 0 0;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.7;
-  letter-spacing: 0.04em;
-  color: var(--vp-c-text-3);
-}
-/* 没启用滚轮时（触摸屏 / 减少动效 / 无 JS），提示语没有意义 */
-.poem:not(.is-live) .pl-hint {
-  display: none;
+  padding-left: 1.5em;
+  text-indent: -1.5em;
 }
 
 /* ============ 静态双语版 ============
@@ -490,6 +517,12 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 720px) {
+  .poem {
+    max-width: 100%;
+  }
+  .wheel {
+    max-width: 100%;
+  }
   .poem-zh {
     font-size: 25px;
   }
