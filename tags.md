@@ -85,11 +85,40 @@ function selectTag(name, ev) {
   nextTick(playMagicMove)
 }
 function closeCloud() {
-  open.value = false
   try {
     history.replaceState(null, '', location.pathname + location.search)
   } catch (e) {
     /* 同上 */
+  }
+  const root = rootEl.value
+  const nameEl = root && root.querySelector('.tr-name')
+  const target =
+    typeof document !== 'undefined' ? document.getElementById('tag-' + current.value) : null
+  let reduce = false
+  try {
+    reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  } catch (e) {
+    /* 无 matchMedia 时不拦截 */
+  }
+  if (nameEl && target && !reduce) {
+    // 反向神奇移动：标题飞回它来自的那个词
+    const f = nameEl.getBoundingClientRect()
+    const to = target.getBoundingClientRect()
+    const dx = to.left + to.width / 2 - (f.left + f.width / 2)
+    const dy = to.top + to.height / 2 - (f.top + f.height / 2)
+    const sx = to.width / f.width
+    const sy = to.height / f.height
+    nameEl.style.transition = 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)'
+    nameEl.style.transformOrigin = 'center'
+    nameEl.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')'
+    // 等飞行动画走完再卸载结果面板、让词云淡入（保留"返回词云"那个动作）
+    setTimeout(() => {
+      open.value = false
+      flyFrom.value = null
+    }, 520)
+  } else {
+    open.value = false
+    flyFrom.value = null
   }
 }
 /* 神奇移动（FLIP）：被点的词「飞」到成为标题 `.tr-name`。
@@ -176,7 +205,6 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
       :key="c.name"
       :id="`tag-${c.name}`"
       class="cw"
-      :class="{ 'is-source': open && c.name === current }"
       :style="{ fontSize: c.fs + 'px', '--dx': c.dx, '--dy': c.dy, transitionDelay: open ? c.delay : '0ms' }"
       @click="selectTag(c.name, $event)"
     >{{ c.name }}<span class="cw-n">{{ c.n }}</span></button>
@@ -321,6 +349,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   align-items: baseline;
   gap: 6px 16px;
   padding: 28px 0 10px;
+  transition: opacity 0.4s ease;
 }
 .cw {
   cursor: pointer;
@@ -331,8 +360,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   font-weight: 700;
   line-height: 1.5;
   color: var(--vp-c-text-2);
-  /* 散开用迪士尼式回弹缓动：飞出去会稍微过冲再落定，比之前的线性淡出有"弹"感 */
-  transition: color 0.18s ease, opacity 0.45s ease, transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: color 0.18s ease;
 }
 .cw:hover {
   color: var(--rust);
@@ -345,17 +373,12 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   margin-left: 3px;
   vertical-align: 0.35em;
 }
-/* 散开：点词后整片云按各自的 (--dx,--dy) 飞出淡去，方向/距离/延迟全是定值。
-   被点的那个词不跟着散开 —— 它"变成"了标题（见 playMagicMove 的 FLIP）。 */
-.cloud-zone.is-open .cw {
+/* 点词后整片云淡出（不再"散开飞走"），把位置让给结果面板；
+   被点的那个词用 FLIP 飞过去"变成" .tr-name 标题（见 playMagicMove）。
+   返回时云再淡入 —— 保留"返回词云"那个动作。 */
+.cloud-zone.is-open .cloud {
   opacity: 0;
-  transform: translate(var(--dx), var(--dy)) scale(0.25);
   pointer-events: none;
-}
-.cloud-zone.is-open .cw.is-source {
-  opacity: 0;
-  transform: none;
-  transition: opacity 0.12s ease;
 }
 
 /* ============ 紧凑标题串（点词后原位出现） ============ */
