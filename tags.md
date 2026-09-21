@@ -100,7 +100,10 @@ function closeCloud() {
   } catch (e) {
     /* 无 matchMedia 时不拦截 */
   }
-  if (nameEl && target && !reduce) {
+  // 飞行途中让词云淡回可见：否则目标词处于 opacity:0，标题像飞进虚空而非落回那个词
+  const cloudEl = root && root.querySelector('.cloud')
+  if (nameEl && target && !reduce && cloudEl) {
+    cloudEl.style.opacity = '1'
     // 反向神奇移动：标题飞回它来自的那个词
     const f = nameEl.getBoundingClientRect()
     const to = target.getBoundingClientRect()
@@ -111,8 +114,9 @@ function closeCloud() {
     nameEl.style.transition = 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)'
     nameEl.style.transformOrigin = 'center'
     nameEl.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')'
-    // 等飞行动画走完再卸载结果面板、让词云淡入（保留"返回词云"那个动作）
+    // 飞完再卸载面板；清掉内联 opacity 交还 CSS（下次点开仍会淡出），保留"返回词云"动作
     setTimeout(() => {
+      cloudEl.style.opacity = ''
       open.value = false
       flyFrom.value = null
     }, 520)
