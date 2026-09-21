@@ -176,6 +176,9 @@ const md = (d) => String(d).slice(5)
   line-height: 1.6;
   color: var(--vp-c-text-1);
   text-decoration: none;
+  /* 干掉 VP 默认的 color .25s 过渡：文字在黑→橘之间渐变，而下划线取
+     currentColor 跟着走，看上去就是"先黑再橘"两段式。悬停即达才干净。 */
+  transition: none;
 }
 .idx-list a:hover {
   color: var(--rust);
@@ -208,6 +211,8 @@ const md = (d) => String(d).slice(5)
 .idx-tagrow a {
   color: var(--vp-c-text-2);
   text-decoration: none;
+  /* 同上：避免下划线随文字色的过渡出现"先黑再橘" */
+  transition: none;
 }
 .idx-tagrow a:hover {
   color: var(--rust);

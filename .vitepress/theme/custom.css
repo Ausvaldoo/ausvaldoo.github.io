@@ -861,6 +861,9 @@ html {
 .pt-tag:hover {
   color: var(--rust);
   text-decoration: underline;
+  /* 下划线色锁定为终态色。否则 text-decoration 取 currentColor，会跟着
+     上面那条 color 过渡一起渐变，看起来是"先黑再橘"两段式。 */
+  text-decoration-color: var(--rust);
   text-underline-offset: 3px;
 }
 /* 词与词之间用细点分隔，比留空隙更像"一行元数据"。
