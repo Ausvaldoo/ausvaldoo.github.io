@@ -2,7 +2,6 @@
 title: 不完备的启示：从哥德尔定理到信息管控
 categories: 信息与认知
 tags:
-  - 知乎
   - 信息管控
   - 方法论
 description: >-

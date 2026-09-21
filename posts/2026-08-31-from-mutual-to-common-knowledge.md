@@ -2,7 +2,6 @@
 title: 说出来的勇气：从"共有知识"到"公共知识"的社会跃迁
 categories: 信息与认知
 tags:
-  - 知乎
   - 言论空间
   - 社会心理
 description: >-

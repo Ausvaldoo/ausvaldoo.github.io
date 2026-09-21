@@ -2,7 +2,6 @@
 title: 看不见的锁链：权力如何生产现实、塑造主体、自我强化
 categories: 权力与制度
 tags:
-  - 知乎
   - 权力
   - 信息管控
 description: >-

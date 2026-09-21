@@ -2,7 +2,6 @@
 title: 出租大脑的人
 categories: 社会观察
 tags:
-  - 知乎
   - 意识形态
   - 言论空间
 description: >-

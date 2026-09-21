@@ -2,7 +2,6 @@
 title: 底线的重量：从洛水之誓到柏林墙下，人类文明究竟积累了什么
 categories: 历史与文化
 tags:
-  - 知乎
   - 伦理
   - 历史
 description: >-

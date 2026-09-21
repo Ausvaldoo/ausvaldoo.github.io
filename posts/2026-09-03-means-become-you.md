@@ -2,7 +2,6 @@
 title: 手段是正在形成中的你
 categories: 社会观察
 tags:
-  - 知乎
   - 伦理
   - 方法论
 description: >-

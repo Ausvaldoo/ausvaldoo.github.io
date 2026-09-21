@@ -2,7 +2,6 @@
 title: 方法的贫困：吴承恩缺的那张图纸
 categories: 历史与文化
 tags:
-  - 知乎
   - 方法论
   - 文艺
 description: >-

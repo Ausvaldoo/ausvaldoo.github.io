@@ -2,7 +2,6 @@
 title: 写在纸上的平等：性别对立背后，那个选择不下场的裁判
 categories: 社会观察
 tags:
-  - 知乎
   - 性别
   - 法治与宪法
 description: >-

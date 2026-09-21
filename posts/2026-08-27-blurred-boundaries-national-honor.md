@@ -2,7 +2,6 @@
 title: 模糊的边界与权力的游戏：从"国家荣誉"概念看中国法治的结构性困境
 categories: 宪法与法治
 tags:
-  - 知乎
   - 法治与宪法
   - 权力
 description: >-

@@ -2,7 +2,6 @@
 title: 简化字重估：在”扫盲”与”乌龟”之外
 categories: 历史与文化
 tags:
-  - 知乎
   - 语言与文字
   - 意识形态
 description: >-

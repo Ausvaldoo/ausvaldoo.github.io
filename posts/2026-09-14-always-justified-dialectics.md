@@ -2,7 +2,6 @@
 title: 怎么都有理
 categories: 信息与认知
 tags:
-  - 知乎
   - 方法论
   - 意识形态
   - 信息管控

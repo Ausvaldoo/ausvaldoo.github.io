@@ -2,7 +2,6 @@
 title: 致那些劝我“乖乖赚钱”的人：我拒绝被定义为经济动物
 categories: 社会观察
 tags:
-  - 知乎
   - 劳动与经济
   - 伦理
 description: >-
