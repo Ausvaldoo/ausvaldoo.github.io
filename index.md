@@ -510,13 +510,20 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
    本实现用 CSS animation 而非 GSAP（不引入 60KB 依赖），缓动用
    cubic-bezier(.33,1,.68,1) 逼近 power3（其定义即 ease-out-cubic 的变体）。
 
-   ⚠️ 2026-09-22 站长决定：**只去掉 blur(4px)，保留升起 + 倾斜 + 两级错峰。**
-   依据是另一参照站 linearfestivals 的 EventHero —— 它的逐词上升原文是：
+   ⚠️ 2026-09-22 站长两次决定，把上面那组参数里的两项撤掉了 —— **现在只剩位移 + 两级错峰**：
+     ① 去掉 `blur(4px)`：「我说的是不要模糊……我给你的那个网站，它上身就根本没有模糊效果啊」
+     ② 去掉 `rotateZ:4`：「我的那个博客就不要倾斜了吧，就学 linearfestivals 错峰」
+   两次的依据都是另一参照站 linearfestivals 的 EventHero，它的逐词上升原文是：
      t.fromTo('[data-hero-word]', { yPercent: 110 }, { yPercent: 0, duration: .9, stagger: .05 }, '-=0.45')
-   **它没有模糊，也没有几何旋转** —— 但请注意它【有错峰】（stagger .05），错峰 ≠ 倾斜：错峰是时间上的先后（波浪感），倾斜是几何 rotate（字是歪的）。站长原话：「这个肯定是要的（升起+倾斜+错峰），
-   我说的是不要模糊……我给你的那个网站，它上身就根本没有模糊效果啊」。
-   所以这里只删 blur 一项，其余三件（位移 / 4deg 倾斜 / 行+词两级错峰）原样不动；
-   连 will-change 里的 filter 一起撤掉 —— 少一个合成层属性。
+   **它没有模糊、也没有几何旋转**，只有错峰。
+
+   ⚠️ 术语务必分清（站长专门纠正过一次，别再把这两件事混为一谈）：
+     · **错峰（stagger）= 时间上的先后起步** → 产生「一片词依次起身」的波浪感。**必须保留。**
+     · **倾斜（rotateZ）= 几何上的旋转** → 字本身是歪的。**已撤掉。**
+   本站的错峰比 linearfestivals **更细**：它是单级（词 `stagger .05`），
+   本站是**两级**（行 `--fm-line-step` + 词 `--fm-word-step`），四行起步时刻分得更开，
+   这正是下面说的「多段上升」（四行分四段），别顺手删掉。
+   另外：撤掉 blur 本身也让四段分先后**看得更清楚** —— 模糊会把它糊成一片。
 
    ⚠️ 为什么掩码单位必须是「词」而不是「行」（2026-09-19 的结论，仍然成立）：
    只按行错峰时，行内整块齐步，没有「左端先起、右端被拉着起来」的波浪感。
@@ -547,11 +554,14 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 }
 .fm-word > span {
   display: inline-block;
-  /* 初始态：沉到地平线以下（100% = 自身高度），并轻微倾斜，
-     模拟「从远处地平线浮起」的实体感 —— 0 位移的纯透明淡入会显得很平。
-     ⚠️ 2026-09-22 起**不再带 blur**：参照站 linearfestivals 的逐词上升没有模糊，
-        它只做 yPercent 110 → 0。见本文件上方 style 块开头的说明。 */
-  transform: translateY(100%) rotate(4deg);
+  /* 初始态：沉到地平线以下（100% = 自身高度）。
+     ⚠️ 2026-09-22 站长两次决定，这里已经撤掉两项：
+        ① 去掉 blur(4px)  —— 参照站 linearfestivals 的逐词上升没有模糊
+        ② 去掉 rotate(4deg) —— 「我的那个博客就不要倾斜了吧，就学它错峰」
+     所以现在只剩**纯位移 + 两级错峰**，与 linearfestivals 的 `yPercent:110 → 0` 同构
+     （差别只在它没有行级错峰，本站有）。
+     注意：错峰（时间先后 / 波浪）必须保留 —— 站长明确「这个肯定是要的」。 */
+  transform: translateY(100%);
   opacity: 0;
   will-change: transform, opacity;
 }
@@ -596,11 +606,11 @@ html.fm-rise-in .fm-word > span {
 
 @keyframes fm-word-rise {
   from {
-    transform: translateY(100%) rotate(4deg);
+    transform: translateY(100%);
     opacity: 0;
   }
   to {
-    transform: translateY(0) rotate(0deg);
+    transform: translateY(0);
     opacity: 1;
   }
 }

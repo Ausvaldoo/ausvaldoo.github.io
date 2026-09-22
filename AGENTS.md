@@ -681,7 +681,7 @@ cd /e/04_Tools/zhihu-spider && ./1_crawl.bat     # 等价：python crawl_article
 | 样式 | `index.md` 文件内 `<style>`（**裸 style**，`.fm-` 前缀自带命名空间，不走 `custom.css`） |
 | 逻辑 | `.vitepress/theme/index.mjs` 的 `splitPoem()`（拆行/拆词/注入下标）+ `setupPoemRise()`（挂 `fm-rise-in`） |
 | 参照 | ggdesign.it 的 GSAP SpliteText 参数：`yPercent:100 · rotateZ:4 · duration:1.25 · ease:power3 · stagger:.03`。本站**用 CSS animation 复刻、不引 GSAP**（省 60KB），缓动以 `cubic-bezier(.33,1,.68,1)` 逼近 power3 |
-| **模糊** | **已去掉（2026-09-22 站长决定）**。原参数含 `blur(4px)`（来自 ggdesign.it），但另一参照站 linearfestivals 的 `EventHero` 逐词上升**完全没有模糊** —— 它只做 `yPercent:110 → 0`：**既无模糊，也无几何旋转**。⚠️ 注意「错峰」和「倾斜」是两回事，别混：**错峰 = 时间上先后起步**（产生波浪观感），**倾斜 = 几何上的 rotate**（字本身是歪的）。linearfestivals **有错峰**（stagger .05）、**无倾斜**；本站两者都有（错峰还是词/行两级）。站长原话：「升起+倾斜+错峰这个肯定是要的，我说的是不要模糊」。所以只删 blur 一项，升起 / 4deg 倾斜 / 两级错峰全部保留；改动落在 `index.md` 的初始态、`@keyframes`、done 态、reduced-motion **四处**，外加 `will-change` 里的 `filter` |
+| **已撤掉的两项** | 2026-09-22 站长两次决定，把 ggdesign.it 那组参数里的 `blur(4px)` 与 `rotateZ:4` **都撤掉**，现在只剩**纯位移 + 两级错峰**。依据是另一参照站 `linearfestivals` 的 `EventHero` —— 它只做 `yPercent:110 → 0`，**既无模糊也无几何旋转**。改动落在 `index.md` 的初始态、`@keyframes`、done 态、reduced-motion **四处**，外加 `will-change` 里的 `filter`。⚠️ **错峰必须保留**（站长：「升起+错峰这个肯定是要的」）。⚠️ 术语别混：**错峰 = 时间上先后起步（波浪感）**、**倾斜 = 几何 rotate（字是歪的）** —— 站长专门纠正过一次。⚠️ **「多段上升」（四行分四段）靠的是行级错峰 `--fm-line-step: 0.20s`** —— 实测四行起步 0/260/550/810ms；这是本站比 linearfestivals 更细的地方（它只有词级 `stagger .05`），**不要为了"对齐参照站"把它简化掉**。 |
 
 **调节奏只改两个数**（在 `index.md` 的 `.fm-stmt` 里，不必去动 `calc`）：
 
