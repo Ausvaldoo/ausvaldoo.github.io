@@ -505,10 +505,18 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
    的整页横移，此时不重复播升起 —— 两套空间隐喻（纵向升起 vs 横向平移）
    分属不同触发条件，不会同时发生。
 
-   参数取自参照站点 ggdesign.it 的公开实现（GSAP SpliteText 逐词）：
+   参数最初取自参照站点 ggdesign.it 的公开实现（GSAP SpliteText 逐词）：
      yPercent:100 · rotateZ:4 · blur(4px) · duration:1.25 · ease:power3 · stagger:.03
    本实现用 CSS animation 而非 GSAP（不引入 60KB 依赖），缓动用
    cubic-bezier(.33,1,.68,1) 逼近 power3（其定义即 ease-out-cubic 的变体）。
+
+   ⚠️ 2026-09-22 站长决定：**只去掉 blur(4px)，保留升起 + 倾斜 + 两级错峰。**
+   依据是另一参照站 linearfestivals 的 EventHero —— 它的逐词上升原文是：
+     t.fromTo('[data-hero-word]', { yPercent: 110 }, { yPercent: 0, duration: .9, stagger: .05 }, '-=0.45')
+   **它没有模糊、也没有倾斜**。站长原话：「这个肯定是要的（升起+倾斜+错峰），
+   我说的是不要模糊……我给你的那个网站，它上身就根本没有模糊效果啊」。
+   所以这里只删 blur 一项，其余三件（位移 / 4deg 倾斜 / 行+词两级错峰）原样不动；
+   连 will-change 里的 filter 一起撤掉 —— 少一个合成层属性。
 
    ⚠️ 为什么掩码单位必须是「词」而不是「行」（2026-09-19 的结论，仍然成立）：
    只按行错峰时，行内整块齐步，没有「左端先起、右端被拉着起来」的波浪感。
@@ -539,12 +547,13 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 }
 .fm-word > span {
   display: inline-block;
-  /* 初始态：沉到地平线以下（100% = 自身高度），并轻微倾斜+模糊，
-     模拟「从远处地平线浮起」的实体感 —— 0 位移的纯透明淡入会显得很平。 */
+  /* 初始态：沉到地平线以下（100% = 自身高度），并轻微倾斜，
+     模拟「从远处地平线浮起」的实体感 —— 0 位移的纯透明淡入会显得很平。
+     ⚠️ 2026-09-22 起**不再带 blur**：参照站 linearfestivals 的逐词上升没有模糊，
+        它只做 yPercent 110 → 0。见本文件上方 style 块开头的说明。 */
   transform: translateY(100%) rotate(4deg);
   opacity: 0;
-  filter: blur(4px);
-  will-change: transform, opacity, filter;
+  will-change: transform, opacity;
 }
 
 /* 两级错峰的参数 —— **调节奏只改这两个数**：
@@ -589,12 +598,10 @@ html.fm-rise-in .fm-word > span {
   from {
     transform: translateY(100%) rotate(4deg);
     opacity: 0;
-    filter: blur(4px);
   }
   to {
     transform: translateY(0) rotate(0deg);
     opacity: 1;
-    filter: blur(0);
   }
 }
 
@@ -608,7 +615,6 @@ html.fm-rise-in .fm-word > span {
 html.fm-rise-done .fm-word > span {
   transform: none;
   opacity: 1;
-  filter: none;
   will-change: auto;
 }
 
@@ -617,7 +623,6 @@ html.fm-rise-done .fm-word > span {
   .fm-word > span {
     transform: none;
     opacity: 1;
-    filter: none;
   }
   html.fm-rise-in .fm-word > span {
     animation: none;
