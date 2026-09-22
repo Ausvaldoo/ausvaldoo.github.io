@@ -152,7 +152,9 @@ function setupReveal() {
  *                        duration:1.25, ease:'power3', stagger:.03 })
  *   ⚠️ 2026-09-22 站长决定把 `filter:'blur(4px)'` 去掉（其余三项原样保留）——
  *      依据是另一参照站 linearfestivals 的 EventHero：它的逐词上升**没有模糊**，
- *      只做 `yPercent:110 → 0`。这是个"只删一项"的改动，别顺手把 rotateZ 也删了。
+ *      只做 `yPercent:110 → 0`（它有错峰 stagger .05，但没有几何旋转）。
+ *      ⚠️ 错峰（时间先后 / 波浪）与倾斜（几何 rotate / 字是歪的）是两件事，别混。
+ *      这是个"只删一项"的改动，别顺手把 rotateZ 也删了。
  *      详见 index.md 那份 style 块开头的说明。
  *   逐行版只有 4 个错峰单位（4 行 × 0.07s = 0.21s 窗口），视觉上近乎齐步走；
  *   逐词版错峰单位 ~14 个（0.03s × 13 = 0.42s 窗口），才有了「波浪」质感。

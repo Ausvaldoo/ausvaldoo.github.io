@@ -513,7 +513,7 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
    ⚠️ 2026-09-22 站长决定：**只去掉 blur(4px)，保留升起 + 倾斜 + 两级错峰。**
    依据是另一参照站 linearfestivals 的 EventHero —— 它的逐词上升原文是：
      t.fromTo('[data-hero-word]', { yPercent: 110 }, { yPercent: 0, duration: .9, stagger: .05 }, '-=0.45')
-   **它没有模糊、也没有倾斜**。站长原话：「这个肯定是要的（升起+倾斜+错峰），
+   **它没有模糊，也没有几何旋转** —— 但请注意它【有错峰】（stagger .05），错峰 ≠ 倾斜：错峰是时间上的先后（波浪感），倾斜是几何 rotate（字是歪的）。站长原话：「这个肯定是要的（升起+倾斜+错峰），
    我说的是不要模糊……我给你的那个网站，它上身就根本没有模糊效果啊」。
    所以这里只删 blur 一项，其余三件（位移 / 4deg 倾斜 / 行+词两级错峰）原样不动；
    连 will-change 里的 filter 一起撤掉 —— 少一个合成层属性。
