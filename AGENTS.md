@@ -6,6 +6,38 @@
 
 ---
 
+## 0. ⚠️ 最容易犯的错：改完不 push，站长什么都看不到
+
+> **2026-09-24 实际发生过**：连着 6 笔提交（卷次更正 / 清知乎链接 / 删系列引言 / 改 description）
+> 全部只 `git commit` 没 `git push`。站长刷新线上，看到的是**两周前的页面**，自然认为"你没改"。
+> **本地文件改了 ≠ 线上改了。** 这个博客是 push 之后由 GitHub Actions 构建发布的
+> （`.github/workflows/deploy.yml`：`on: push: branches: [main]`）。
+
+**铁律：任何一次改动，交付前必须走完这三步，一步都不能省。**
+
+```bash
+git add -A && git commit -m "说明" && git push origin main
+```
+
+**并且必须验证线上**（别信"推送成功"，等 1~2 分钟再探）：
+
+```bash
+curl.exe -s -o /dev/null -w "%{http_code}" https://ausvaldoo.github.io/posts/<slug>   # 期望 200
+```
+
+要确认**内容**真的换了，直接抓下来搜关键字（这是唯一可信的证据）：
+
+```bash
+curl.exe -s https://ausvaldoo.github.io/posts/<slug> > /tmp/live.html
+grep -c "<改动后该消失的旧文字>" /tmp/live.html    # 期望 0
+grep -c "<改动后该出现的新文字>" /tmp/live.html    # 期望 >0
+```
+
+⚠️ 站长刷新后若说"怎么没变"，**先问是不是浏览器缓存**（要他 Ctrl+F5 强刷），
+但更要先自查 `git status -sb` 里有没有 `ahead N`。**绝大多数情况是没 push。**
+
+---
+
 ## 1. 这是什么
 
 - **一个静态博客**，VitePress 1.6.4，纯 Markdown 写成，没有数据库、没有服务器、没有后端。
