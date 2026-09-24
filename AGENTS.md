@@ -459,6 +459,20 @@ Edge profile 目录的 `shutil.rmtree(PROF)`（实测 925 个文件）同样被�
 
 ### 4.1 从知乎同步新文章（2026-09-12 跑通）
 
+> 🔗 **正文里的链接分两类，性质完全不同（2026-09-24 定清，别再混为一谈）**
+>
+> | 类型 | 长什么样 | 处理 |
+> |---|---|---|
+> | **知乎自动加的** · 实体链接 | `zhida.zhihu.com/search?content_id=…` | **去链接、留文字** |
+> | **知乎自动加的** · 外链中转 | `link.zhihu.com/?target=http%3A//…` | **解 `target=` 还原真实地址** |
+> | **作者自己写的** · 文章互引 | `《[权力的尺蠖](zhuanlan.zhihu.com/p/…)》` | **保留**（想改站内另说） |
+> | **设计的一部分** · 文末「查看原文」 | `zhuanlan.zhihu.com/p/…` | **保留** |
+>
+> 前两类已在 `E:\04_Tools\zhihu-spider\src\converter.py` 的 `html_to_md()` 里挡掉
+> （`_ENTITY_RE` 去实体 / `_RELAY_HOST` 解中转），增量不会再进来；存量见
+> `.workbuddy/tmp/strip_zhida.py`。
+> ⚠️ **后两类不要"顺手清掉"** —— 那是作者正文，不是脏数据。
+
 站长会先在知乎发文，之后再让 AI 同步到博客。**不要试图直接抓网页** —— 知乎对本站
 是全站登录墙（连 `zhihu.com/` 首页都 302 到 `signin`），curl 一律 403。必须用现成爬虫：
 
