@@ -555,15 +555,21 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 .fm-word > span {
   display: inline-block;
   /* 初始态：沉到地平线以下（100% = 自身高度）。
-     ⚠️ 2026-09-22 站长两次决定，这里已经撤掉两项：
-        ① 去掉 blur(4px)  —— 参照站 linearfestivals 的逐词上升没有模糊
+     ⚠️ 2026-09-22 站长两次决定，这里已经撤掉三项：
+        ① 去掉 blur(4px)   —— 参照站 linearfestivals 的逐词上升没有模糊
         ② 去掉 rotate(4deg) —— 「我的那个博客就不要倾斜了吧，就学它错峰」
+        ③ 去掉 opacity:0   —— 2026-09-23「不要淡入的效果」
      所以现在只剩**纯位移 + 两级错峰**，与 linearfestivals 的 `yPercent:110 → 0` 同构
      （差别只在它没有行级错峰，本站有）。
-     注意：错峰（时间先后 / 波浪）必须保留 —— 站长明确「这个肯定是要的」。 */
+     注意：错峰（时间先后 / 波浪）必须保留 —— 站长明确「这个肯定是要的」。
+
+     ⚠️ ③ 撤掉 opacity 为什么是安全的：隐藏「尚未升起」的字靠的是
+     **.fm-word 的 overflow:hidden 裁切**，不是透明度。translateY(100%) 是
+     transform —— 不改布局、但把字整体挪出掩码下沿，所以动画延迟期间
+     （animation-fill-mode:both 的 backwards 段）字根本不显示。
+     移除 opacity 只是让字**升起过程中始终是全不透明的**，这正是「不要淡入」。 */
   transform: translateY(100%);
-  opacity: 0;
-  will-change: transform, opacity;
+  will-change: transform;
 }
 
 /* 两级错峰的参数 —— **调节奏只改这两个数**：
@@ -577,7 +583,10 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
      反过来只按**行**错峰，行内就变成整块齐步，波浪感又会丢（注释下段记的旧结论）。
      两者是**不同的视觉任务**（行内=波浪，行间=节拍），必须各给一个步长。 */
 .fm-stmt {
-  --fm-word-step: 0.03s;
+  /* 2026-09-23 站长原话「字词错峰明显点」→ 词内步长 0.03s 翻倍到 0.06s。
+     行间步长 0.20s 不动：那一项决定「四段分不分得开」，已经够。
+     ⚠️ 只调这两个数就够，不要去改 animation-delay 里的 calc 结构。 */
+  --fm-word-step: 0.06s;
   --fm-line-step: 0.20s;
 }
 
@@ -585,33 +594,35 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
    .fm-rise-in 由 index.mjs 的 setupPoemRise() 在**首屏加载**时挂上。 */
 html.fm-rise-in .fm-word > span {
   animation: fm-word-rise 1.25s cubic-bezier(0.33, 1, 0.68, 1) both;
-  /* 两级错峰叠加：
+  /* 两级错峰叠加（2026-09-23 的值：行间 0.20s / 词内 0.06s）：
        行间 行号 × 0.20s    → 四行各自成拍
-       词内 全局词号 × 0.03s → 行内仍是一条波浪
-     ⚠️ 但行首的**实测起步时刻不是**整齐的 0 / 200 / 400 / 600 ms：行号那一项
+       词内 全局词号 × 0.06s → 行内仍是一条波浪（较 09-21 的 0.03s 已翻倍）
+     ⚠️ 但行首的**起步时刻不是**整齐的 0 / 200 / 400 / 600 ms：行号那一项
      是加在该行首词「已累加的词号项」**之上**的。实测（_blog-probe/poem_delay_probe.py）：
-       第1行 0ms   第2行 260ms   第3行 550ms   第4行 810ms
-       （相邻间距 260 / 290 / 260 —— 不匀是算术的必然，不是 bug，别去"修"成 200 整。
+       第1行   0ms   第2行 320ms   第3行 700ms   第4行 1020ms
+       （相邻间距 320 / 380 / 320 —— 不匀是算术的必然，不是 bug，别去"修"成 200 整。
          想改成等距要先把词号项从行首扣掉，那是另一套算法，收益只是整齐。）
-     全诗 4 行 / 9 块。第 4 行 810ms 起步 + 1250ms 行程 ≈ 2060ms 走完。
-     对照上一版（只按词错峰）：首末行起步差 210ms，仅占行程 17%，眼睛分不出；
-     现在 810ms，占 65%。这就是 2026-09-21 这次改动的**可验收指标**。
+     全诗 4 行 / 9 块，逐个块的起步时刻（ms）：
+       0 · 60 │ 320 · 380 · 440 │ 700 · 760 │ 1020 · 1080
+     末块 1080ms 起步 + 1250ms 行程 ≈ **2330ms** 全部落定。
+     对照 2026-09-21 那版（词内 0.03s）：末块 840ms 起步、2090ms 收尾，
+     行内相邻块只差 30ms（占单段行程 2.4%，看着像整块齐步走）；现在 60ms（4.8%）。
      ⚠️ --fm-word-i 是**跨行累加**的全局词号，--fm-line-i 是行号，
-     两者量纲不同、不可互相推导，所以要分别注入（见 index.mjs splitPoem / play）。 */
+     两者量纲不同、不可互相推导，所以要分别注入（见 index.mjs splitPoem / play）。
+     ⚠️ 若嫌 2.33s 太长：把 animation 的 1.25s 降到 1.0s，或把 --fm-line-step
+     降到 0.14s —— 都不要去动下面的 calc 结构。 */
   animation-delay: calc(
     var(--fm-line-i, 0) * var(--fm-line-step, 0.2s) +
-    var(--fm-word-i, 0) * var(--fm-word-step, 0.03s)
+    var(--fm-word-i, 0) * var(--fm-word-step, 0.06s)
   );
 }
 
 @keyframes fm-word-rise {
   from {
     transform: translateY(100%);
-    opacity: 0;
   }
   to {
     transform: translateY(0);
-    opacity: 1;
   }
 }
 
@@ -624,7 +635,6 @@ html.fm-rise-in .fm-word > span {
    所以 done 态必须显式写死终态值，不能只依赖动画的 fill。 */
 html.fm-rise-done .fm-word > span {
   transform: none;
-  opacity: 1;
   will-change: auto;
 }
 
@@ -632,7 +642,6 @@ html.fm-rise-done .fm-word > span {
 @media (prefers-reduced-motion: reduce) {
   .fm-word > span {
     transform: none;
-    opacity: 1;
   }
   html.fm-rise-in .fm-word > span {
     animation: none;
