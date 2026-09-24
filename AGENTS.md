@@ -39,19 +39,21 @@
 | 改站名 / 副标题 | `.vitepress/config.mts` → `title` / `description` | 网页标签页标题 |
 | 改关于页 | `about.md` | 打开 /about |
 | 改首页排版 | `index.md` + `.vitepress/theme/custom.css` | 首页 |
-| **改首页题句升起的节奏** | `index.md` 里 `.fm-stmt` 的 `--fm-word-step`（行内波浪）/ `--fm-line-step`（行间节拍） | 跑 `_blog-probe/poem_delay_probe.py`，看四行起步时刻；末行应 ≈1020ms，见第 6 节「首页诗句逐词升起」 |
+| **改首页题句升起的节奏** | `index.md` 里 `.fm-stmt` 的 `--fm-word-step`（行内波浪）/ `--fm-line-step`（行间节拍） | 跑 `E:\WorkBuddyWorkspace\2026-09-06-12-24-59\_blog-probe\poem_delay_probe.py`，看四行起步时刻；末行应 ≈1020ms，见第 6 节「首页诗句逐词升起」 |
 
-> ⚠️ **`_blog-probe/` 目录 2026-09-24 已空**（`E:\04_Tools\blog-probe\` 同样为空）。
-> 本文件里凡引用它的脚本（`poem_delay_probe.py` / `verify_series.py` / `verify_doors_darkmode.py` /
-> `_verify_live_softbreak.py` / `shot_series.py`）**都跑不起来** —— 这些段落保留结论与数值当档案，
-> 但**不要照着路径去执行**。下方的表格里只有 `tools/verify_series.py` 是真能跑的。
-> 生成期的安全参数（DrissionPage `sweep()`、`run_js(as_expr=True)` 等）仍然有效，不受影响。
 | 改配色 / 字体 / 动效 | `.vitepress/theme/custom.css` | 全站 |
 | **改某篇的归属分类** | 那篇 frontmatter 的 `categories:` 一行（**只能一个**） | 首页卡片 / 归档页那一行的词变化 |
 | **加/改标签** | 那篇 frontmatter 的 `tags:`，**从受控词汇表里挑** | 打开 `/tags` 看它出现在哪些词下面 |
 | 去掉阅读量 | 删 `MyLayout.vue` 里的 `<ViewCount />` 那一行 | 文章页顶部那行消失 |
 | 恢复成最朴素的博客 | 把 `Layout: MyLayout` 改回默认，删掉 `theme/` 下的 `.vue` | 只剩原生 VitePress |
 | 让某个目录不被发布 | `.vitepress/config.mts` → `srcExclude` 数组 | `dist/` 里搜不到该目录 |
+
+> 📁 **探针脚本的真正落点：`E:\WorkBuddyWorkspace\2026-09-06-12-24-59\_blog-probe\`**
+> （2026-09-24 实测：**380 条目 / 91 个 py / 196 张 png / 17 个 html**）。
+> ⚠️ **它不在本仓库里** —— 随工作区走、不跟 repo 走，克隆博客时不会带过来。
+> 本文件第 42/326/361/536/637/687/752 行引用的都是这个位置。
+> ⚠️ **教训（2026-09-24）**：曾据此误判为"已删除"，因为我查的是 `E:\04_Tools\blog-probe\`
+> （空壳目录）和仓库内的同名目录（**从未存在过**）。**查不到 ≠ 不存在 —— 先找落点，再下结论。**
 
 > ⚠️ **首页只显示最新 12 条**（2026-09-21 核实）。所以上表里凡是「首页……」的验证预期，
 > 都只对**日期足够新的**文章成立（现在首页卡片类名是 `fm-*`）。
@@ -329,7 +331,7 @@ seriesOrder: 2            # 这一篇是第几篇
 →「技术进步的红利到底归谁（上）」），否则三行顶着同一串字看不出差别。完整标题保留在
 `title` 属性里。逻辑见 `SeriesNav.vue` 的 `shortTitle()`，标题不以系列名开头时原样返回。
 
-**验证**：`_blog-probe/verify_series.py`（41 项断言：三篇序号/目录/高亮、上下篇跳转、
+**验证**：`E:/WorkBuddyWorkspace/2026-09-06-12-24-59/_blog-probe/verify_series.py`（41 项断言：三篇序号/目录/高亮、上下篇跳转、
 四个索引页零渲染、`/series` 页、JS 错误数）+ `shot_series.py`（浅色/暗色截图）。
 两个都要在 `vitepress preview` 起来之后跑。
 
@@ -358,7 +360,7 @@ git push origin main
   （`assets/style.<hash>.css`），首页 HTML 里**一个字都没有**。拿样式 token 去 grep HTML 必然 MISS
   —— 那是**假阴性，不是没上线**（2026-09-21 差点据此误报「线上还是旧版」）。
   正确顺序：取 HTML → 解析 `<link rel="stylesheet">` → 逐个下载 → 搜 token。
-- 现成脚本（都在 `_blog-probe/`，只读、不改任何东西）：
+- 现成脚本（都在 `E:/WorkBuddyWorkspace/2026-09-06-12-24-59/_blog-probe/`，只读、不改任何东西）：
   | 脚本 | 用途 |
   |---|---|
   | `_ci_watch.py <sha前缀>` | 轮询某个 commit 的 Actions run，直到 completed 并回报 conclusion |
@@ -482,7 +484,8 @@ cd /e/04_Tools/zhihu-spider && ./1_crawl.bat     # 等价：python crawl_article
 | `_catdump.py` | 列出指定分类下的已收文章标题（判断新文该归哪类时用） |
 | `_gen_manifest.py` | 从抓取文件**精确读取标题**生成 MANIFEST 条目 —— **防手工抄弯引号出错** |
 | `_add_series.py` | 幂等写入 `series` / `seriesOrder`（已有则跳过，写完回读校验） |
-| `tools/verify_series.py` | 交付前校验：YAML 可解析、分类是标量、标签全在受控表内、**每个系列只有一个分类且序号连续**；不通过就 `exit 1` |
+| `tools/verify_series.py` | **静态**校验（不必 build）：文章数 / 分类标量 / 标签受控表 / 系列分类一致性 / 《名与数》卷次自洽 / zhida 残留；不通过就 `exit 1`。**接手后先跑它** |
+| `E:\...\_blog-probe\verify_series.py` | **浏览器**校验（须 `build` + `preview --port 5199` 后再跑）：系列条、序号「第 i / n 篇」、展开目录与高亮、上下篇跳转、首篇「系列首篇」/ 末篇「系列完」、五个索引页零渲染、`/series` 总览、JS 错误数 —— 第 326 行那段说的就是它。<br>⚠️ **与上面那个同名不同物**，它的 `SERIES` 清单还停在 2026-09-15 的两条，需要时自行追加；**两者互补不重复**：一个是源码层、一个是渲染层 |
 | `_scan_lazy.py` | 扫本次新文的「懒连续」与有序列表回归 |
 | `_verify_live.py` | 推送后探测线上产物（文章 200 / 系列名 / 篇序 / 锚点数） |
 | `_scan_softbreak.py` | 扫「软换行粘连」：引用块内连续 `> ` 行 + 段落内相邻非空行。**修完应报 0**；改统计前也可拿它回归 |
@@ -533,7 +536,7 @@ cd /e/04_Tools/zhihu-spider && ./1_crawl.bat     # 等价：python crawl_article
   `<p>` 会产出 `\n\n`，引用块分支就会输出一个空 `>` 行；只有 `<br>` 不会。
   实测这个案例里没有空行 ⇒ 原文一定是同一个 `<p>` 里的 `<br>`。
   也可反过来验线上：抓文章 HTML 看那个块里有几个 `<p>`、几个 `<br>`
-  （现成脚本 `_blog-probe/_verify_live_softbreak.py`）。
+  （现成脚本 `E:/WorkBuddyWorkspace/2026-09-06-12-24-59/_blog-probe/_verify_live_softbreak.py`）。
   **修法**：行尾加**反斜杠**（CommonMark 硬换行 → 渲染成 `<br />`）。
   ⚠️ **刻意不用「行尾两个空格」** —— 不可见，任何一次"去尾随空白"的整理都会让它
   **静默失效**；反斜杠在源码里看得见，可复核。
@@ -634,7 +637,7 @@ cd /e/04_Tools/zhihu-spider && ./1_crawl.bat     # 等价：python crawl_article
 
 1. `custom.css` `.VPHero { --misreg: 1 }` —— **错版总强度**。
    0.6 几乎只剩字形边缘一线暖光；1.0 基准（正常阅读距离能看出彩边）；1.7 明显「印刷失准」但题句开始发脏。
-   三档实拍见 `_blog-probe/misreg_stack.png` / `misreg_compare.png`。
+   三档实拍见 `E:/WorkBuddyWorkspace/2026-09-06-12-24-59/_blog-probe/misreg_stack.png` / `misreg_compare.png`。
 2. `index.mjs` `setupHeroTilt()` 里 `GAIN`（指针归一化增益，现 1.35）与 `EASE`（惯性插值比例，现 0.12）。
    `EASE` 越小越"重"。**CSS 侧禁止再加 transition** —— 两次缓动叠起来手感发黏。
 3. `custom.css` ㉔ 段各层的 `rotateX/rotateY` 幅度（`.name` 10deg/8deg → `.tagline` 3.5deg/3deg，
@@ -684,7 +687,7 @@ cd /e/04_Tools/zhihu-spider && ./1_crawl.bat     # 等价：python crawl_article
 ⚠️ 必须 append 到**末尾**；且 `arm()` 轮询里两个 ensure 函数**不能短路**
 （写 `a() || b()` 会在 a 成功时跳过 b）。
 
-**暗色必须单独调。** 实测 `_blog-probe/verify_doors_darkmode.py`：
+**暗色必须单独调。** 实测 `E:/WorkBuddyWorkspace/2026-09-06-12-24-59/_blog-probe/verify_doors_darkmode.py`：
 浅色下门/纸亮度比 0.59（门比纸**暗**，是一块内嵌的照片）；暗色下 3.09（比纸**亮** 3 倍）
 —— 相对显眼度翻转 5.2 倍，门成了整屏最亮的东西、跟刊名抢。这与粒子的老问题是同一个
 物理（浅底的纸会冲淡颜料，暗底不会）。`.dark` 里加 `filter: brightness(0.82)` 后
@@ -749,7 +752,7 @@ cd /e/04_Tools/zhihu-spider && ./1_crawl.bat     # 等价：python crawl_article
 `fm-rise-done` 重新挂上，于是读到的永远是上一轮的终态。正确姿势是
 `animation:none` → 强制 reflow → 清空 → 重新挂类 → 再 reflow，**并在同一次同步调用里读
 `getComputedStyle`**（分两步 CDP 往返会被 `animationend` 抢跑）。完整范式见
-`_blog-probe/poem_delay_probe.py` 的 `ARM_READ_JS`。
+`E:/WorkBuddyWorkspace/2026-09-06-12-24-59/_blog-probe/poem_delay_probe.py` 的 `ARM_READ_JS`。
 
 ⚠️ **DrissionPage 的 `run_js()` 必须传 `as_expr=True`**，否则连 `1+1` 都返回 `None`。
 以及：在本沙箱起浏览器**前**必须先跑 `dpprep.sweep()`（见 §4.1「在 AI 沙箱里跑爬虫会『启动不起来』」），否则会永久挂住。
