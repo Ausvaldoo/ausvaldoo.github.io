@@ -20,11 +20,19 @@ for (const p of posts) {
 const byCount = (a, b) =>
   b[1].length - a[1].length || String(a[0]).localeCompare(String(b[0]), 'zh')
 const groups = Object.entries(map).sort(byCount)
+
+// ⚠️ 一篇可以同属多个系列（2026-09-26 起），此时 series.data.js 会为「一篇 × 一个系列」
+// 各产出一行 —— 所以 posts.length 是「系列收录条数」，不是文章数。上面那行总数必须
+// 按 URL 去重，否则会把同一篇文章数两遍，凭空多出一篇。
+const articleCount = new Set(posts.map((p) => p.url)).size
+const shared = posts.length - articleCount
 </script>
 
 # 系列
 
-<p class="ser-count">{{ groups.length }} 个系列 · 共 {{ posts.length }} 篇</p>
+<p class="ser-count">
+  {{ groups.length }} 个系列 · 共 {{ articleCount }} 篇<span v-if="shared">（其中 {{ shared }} 篇同属两个系列）</span>
+</p>
 
 <section v-for="[name, list] in groups" :key="name" class="ser-group">
   <h2 :id="`ser-${name}`" class="ser-name">

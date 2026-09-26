@@ -67,24 +67,91 @@ for k, v in tag_counter.most_common():
     print('    %-10s %d%s' % (k, v, '   ← 非受控表' if k not in VOCAB and k != '知乎' else ''))
 
 print('\n=== 3. 各系列分类一致性（每个系列应只有 1 个分类）===')
-by_series = defaultdict(set)
-info = {}
+
+
+def parse_fm_list(fm, key):
+    """从 frontmatter 文本里读一个「可能是标量、也可能是列表」的键，返回字符串列表。
+
+    三种写法都要吃得下：
+        series: 单向生效                       （标量，存量 70 篇）
+        series: [单向生效, 最后的审判]          （行内列表）
+        series:                                （块列表）
+          - 单向生效
+          - 最后的审判
+    2026-09-26 起支持一篇同属多个系列，所以这里不能再假设「只有一个值」。
+    """
+    m = re.search(r'^%s:[ \t]*(.*?)[ \t]*$' % key, fm, re.M)
+    if not m:
+        return []
+    inline = m.group(1).strip()
+    if inline.startswith('[') and ']' in inline:
+        body = inline[1:inline.rfind(']')]
+        vals = [p for p in (x.strip().strip('"\'') for x in body.split(',')) if p]
+    elif inline:
+        vals = [inline.strip('"\'')]
+    else:
+        # 块形式：紧随其后的缩进 `- xxx` 行；遇到第一个非列表行立刻停
+        vals = []
+        for ln in fm[m.end():].split('\n')[1:]:
+            lm = re.match(r'^[ \t]+-[ \t]*(.+?)[ \t]*$', ln)
+            if not lm:
+                break
+            v = lm.group(1).strip().strip('"\'')
+            if v:
+                vals.append(v)
+    return vals
+
+
+pairs = []  # (系列名, 序号, 分类, 文件名) —— 「一篇 × 一个系列」一行
 for f in files:
+    base = os.path.basename(f)
     txt = io.open(f, encoding='utf-8').read()
-    s = re.search(r'^series:\s*(.+?)\s*$', txt, re.M)
-    c = re.search(r'^categories:\s*(.+?)\s*$', txt, re.M)
-    o = re.search(r'^seriesOrder:\s*(\d+)\s*$', txt, re.M)
-    if s and c:
-        by_series[s.group(1)].add(c.group(1).strip())
-    info[os.path.basename(f)] = (s.group(1) if s else '', int(o.group(1)) if o else -1)
-for s, cats in sorted(by_series.items()):
-    n = sum(1 for f, (ss, _) in info.items() if ss == s)
-    orders = sorted(o for f, (ss, o) in info.items() if ss == s)
+    fmm = re.match(r'^---\r?\n(.*?)\r?\n---', txt, re.S)
+    fm = fmm.group(1) if fmm else ''
+    names = parse_fm_list(fm, 'series')
+    orders = parse_fm_list(fm, 'seriesOrder')
+    cm = re.search(r'^categories:\s*(.+?)\s*$', fm, re.M)
+    cat = cm.group(1).strip() if cm else ''
+    if not names:
+        continue
+    if len(set(names)) != len(names):
+        fail('%s 的 series 有重复项：%s' % (base, names))
+    # 两个列表按位置一一对应；数量不等一定是写漏了（多出来的序号按「没写」兜底）
+    if len(names) != len(orders):
+        fail('%s 声明了 %d 个系列，但 seriesOrder 有 %d 个（必须按位置一一对应）'
+             % (base, len(names), len(orders)))
+    for i, n in enumerate(names):
+        o = orders[i] if i < len(orders) else ''
+        pairs.append((n, int(o) if o.isdigit() else -1, cat, base))
+
+by_series = defaultdict(set)
+for n, _o, cat, _f in pairs:
+    by_series[n].add(cat)
+for s in sorted(by_series):
+    mine = [p for p in pairs if p[0] == s]
+    cats = by_series[s]
+    orders = sorted(p[1] for p in mine)
     cont = '  ✅' if len(cats) == 1 else '  ❌'
     print('%s 系列「%s」 %d 篇 分类数=%d %s 序号 %s'
-          % (cont, s, n, len(cats), sorted(cats), orders))
+          % (cont, s, len(mine), len(cats), sorted(cats), orders))
     if len(cats) != 1:
         fail('系列「%s」被拆散：%s' % (s, sorted(cats)))
+
+# 同一系列内序号重复 = 两篇都自称「第 N 篇」，系列页的顺序就成了抛硬币
+for s in sorted(by_series):
+    seen_o = {}
+    for _n, o, _c, base in [p for p in pairs if p[0] == s]:
+        seen_o.setdefault(o, []).append(base)
+    for o, who in sorted(seen_o.items()):
+        if o != -1 and len(who) > 1:
+            fail('系列「%s」的序号 %d 被 %d 篇占用：%s' % (s, o, len(who), who))
+
+multi = [p for p in pairs if len(set(n for n, _o, _c, f2 in pairs if f2 == p[3])) > 1]
+if multi:
+    print('\n  一篇同属多个系列（%d 篇）：' % len(set(p[3] for p in multi)))
+    for base in sorted(set(p[3] for p in multi)):
+        ns = [n for n, _o, _c, f2 in pairs if f2 == base]
+        print('    %-52s %s' % (base, ' + '.join(ns)))
 
 print('\n=== 4. 《名与数》卷次自洽性 ===')
 nm = [f for f in files if 'naming' in os.path.basename(f)]

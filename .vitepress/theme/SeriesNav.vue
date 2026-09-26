@@ -11,52 +11,67 @@ const route = useRoute()
 // （#doc-before 插槽在 /tags、/about、文章页都会渲染，不挡住就会到处冒出来。）
 const IS_POST = /^\/posts\/.+/
 
-const name = computed(() => String(frontmatter.value.series ?? '').trim())
+// ⚠️ 一篇可以同时属于多个系列（2026-09-26 加，见 series.data.js 顶部注释）。
+// frontmatter 的 series 可能是标量（绝大多数文章）或列表；这里统一成数组。
+// 标量时下面 blocks 恒为一个元素，渲染出的 DOM 与旧版逐字相同 ——
+// 存量文章不会有任何视觉变化。
+const names = computed(() => {
+  const v = frontmatter.value.series
+  const one = (x) => String(x ?? '').trim()
+  return (Array.isArray(v) ? v : [v]).map(one).filter(Boolean)
+})
 
-// seriesPosts 是构建期常量，不随路由变化；按当前页声明的系列名过滤即可。
-// 同一系列在数组里已按 seriesOrder 排好序（见 series.data.js）。
-const items = computed(() =>
-  name.value ? seriesPosts.filter((p) => p.series === name.value) : []
+// 每个系列各自一块：系列名 + 该系列的全部篇目 + 本篇在其中的位置。
+// seriesPosts 是构建期常量，不随路由变化；同一系列在数组里已按 seriesOrder 排好序
+// （见 series.data.js）。
+const blocks = computed(() =>
+  names.value
+    .map((name) => {
+      const items = seriesPosts.filter((p) => p.series === name)
+      const at = items.findIndex((p) => p.url === route.path)
+      return { name, items, at }
+    })
+    // 三个条件同时成立才渲染：当前文章确实在这个系列里 + 该系列至少两篇。
+    // 单篇不成系列 —— 只有一篇的文章不该出现「第 1 / 1 篇」这种废话。
+    .filter((b) => b.at >= 0 && b.items.length > 1)
 )
-const at = computed(() => items.value.findIndex((p) => p.url === route.path))
 
-// 三个条件同时成立才渲染：文章页 + 当前文章声明了系列 + 该系列至少两篇。
-// 单篇不成系列 —— 只有一篇的文章不该出现「第 1 / 1 篇」这种废话。
-const show = computed(
-  () => IS_POST.test(route.path) && at.value >= 0 && items.value.length > 1
-)
+const show = computed(() => IS_POST.test(route.path) && blocks.value.length > 0)
 
 // 系列名常常就是标题的前缀（系列「从琴弓到电塔」的三篇标题都以「从琴弓到电塔：」开头）。
 // 展开目录时剥掉这段重复前缀 —— 三行都顶着同一串字，读者反而要费劲找差别在哪。
 // 完整标题留在 title 属性里，鼠标悬停仍能看到。
-const shortTitle = (t) => {
-  const n = name.value
+const shortTitle = (t, n) => {
   if (!n || !t.startsWith(n)) return t
   return t.slice(n.length).replace(/^[：:，,、\s—–-]+/, '') || t
 }
 </script>
 
 <template>
-  <details v-if="show" class="series-nav">
-    <summary>
-      <span class="sn-kicker">系列</span>
-      <span class="sn-name">{{ name }}</span>
-      <span class="sn-pos">第 {{ at + 1 }} / {{ items.length }} 篇</span>
-      <span class="sn-more">全部篇目</span>
-    </summary>
-    <ol class="sn-list">
-      <li v-for="(p, i) in items" :key="p.url">
-        <a
-          :href="p.url"
-          :class="{ 'is-current': p.url === route.path }"
-          :aria-current="p.url === route.path ? 'page' : undefined"
-        >
-          <span class="sn-i">{{ i + 1 }}</span>
-          <span class="sn-t" :title="p.title">{{ shortTitle(p.title) }}</span>
-        </a>
-      </li>
-    </ol>
-  </details>
+  <div v-if="show" class="series-navs">
+    <!-- 多系列时给出块与块之间的分隔（单系列时 .series-navs 只是个透明容器，
+         不加任何间距，视觉与旧版一致）。 -->
+    <details v-for="b in blocks" :key="b.name" class="series-nav">
+      <summary>
+        <span class="sn-kicker">系列</span>
+        <span class="sn-name">{{ b.name }}</span>
+        <span class="sn-pos">第 {{ b.at + 1 }} / {{ b.items.length }} 篇</span>
+        <span class="sn-more">全部篇目</span>
+      </summary>
+      <ol class="sn-list">
+        <li v-for="(p, i) in b.items" :key="p.url">
+          <a
+            :href="p.url"
+            :class="{ 'is-current': p.url === route.path }"
+            :aria-current="p.url === route.path ? 'page' : undefined"
+          >
+            <span class="sn-i">{{ i + 1 }}</span>
+            <span class="sn-t" :title="p.title">{{ shortTitle(p.title, b.name) }}</span>
+          </a>
+        </li>
+      </ol>
+    </details>
+  </div>
 </template>
 
 <style scoped>
@@ -73,6 +88,13 @@ const shortTitle = (t) => {
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.04em;
+}
+
+/* 一篇同属两个系列时，第二条系列条与第一条之间收紧一点 —— 它们是同一段元数据的
+   两块，不是两个独立区块。用 `:not(:last-child)` 限定：只有「后面还有块」时才收紧，
+   所以单系列文章完全不受影响（DOM 与样式都与加这个功能之前逐字一致）。 */
+.series-navs > .series-nav:first-child:not(:last-child) {
+  margin-bottom: 12px;
 }
 
 .series-nav summary {

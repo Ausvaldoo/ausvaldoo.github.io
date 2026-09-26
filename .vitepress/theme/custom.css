@@ -828,8 +828,13 @@ html {
    两者都做成链接，点进「分类与标签」页。风格刻意保持"一行等宽小字"，
    跟文章顶部的阅读量、首页卡片的元数据同一套语言，不引入新装饰。 */
 /* 系列上下篇（SeriesPager）自己已经带了一道上分割线，紧跟其后的分类/标签行
-   不必再来一道 —— 否则两条细线夹着中间那块内容，显得密。 */
-.series-pager + .post-tags {
+   不必再来一道 —— 否则两条细线夹着中间那块内容，显得密。
+   ⚠️ 2026-09-26：SeriesPager 的根节点从 nav.series-pager 变成了
+   div.series-pagers（一篇同属两个系列时要渲染两段，需要一层容器）。
+   （这里刻意不写出带引号的 class 字面量 —— 本文件在 dev 模式下会被内联进
+     HTML，写了就会让「数 series-pager 元素个数」的校验多算一个假阳性。）
+   所以这条毗邻选择器必须跟着改成 .series-pagers —— 写 .series-pager 已经不命中了。 */
+.series-pagers + .post-tags {
   margin-top: 22px;
   padding-top: 0;
   border-top: none;
