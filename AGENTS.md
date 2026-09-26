@@ -585,10 +585,22 @@ Edge profile 目录的 `shutil.rmtree(PROF)`（实测 925 个文件）同样被�
 > bsk get-html --session <id> > p.html         # 正文在 div.Post-RichText 里
 > ```
 >
-> ⚠️ **`bsk` 的守护进程可能中途停掉**，表现为所有命令报
-> `session not registered or already stopped`、`bsk session list` 为空 —— 重新
-> `bsk daemon start --foreground`（后台跑）+ `bsk session start` 即可，不用排查别的。
-> 另外 `bsk get-html` 失败时**会把输出重定向成 0 字节文件**，看到空文件先怀疑会话掉了。
+> ⚠️ **会话会被"空闲回收"，不是守护进程挂了。** 报 `session not registered or already
+> stopped`、或 `bsk session list` 返回空时，**先只重开会话**：`bsk session start --json --no-focus`。
+> 2026-09-26 实查 `bsk` 日志，根因原文是 `INFO ... idle session stopped session=<id>`
+> （本次两个会话分别在空闲 12 分钟、18 分钟时被收走），**守护进程当时还活着**。
+> 只有当重开会话仍然连不上，才去 `bsk daemon start --foreground`（后台跑）——
+> 别一上来就重启守护进程。
+> 推论：**同一批抓取要连着做完**，别把会话放着不管；篇与篇之间不要中途停下干别的。
+>
+> ⚠️ **守护进程会因自动更新"自己消失"，那不是崩溃。** 日志里是
+> `INFO update helper ready; exiting so it can replace and restart the daemon latest=0.3.1`
+> 紧跟 `INFO bsk daemon shutting down (auto-update restart)`（本次 0.3.0 → 0.3.1）。
+> 这是它自带的周期更新自检，**无人触发、也无需处理**；下次跑命令时会重新拉起。
+> 遇到"守护进程凭空没了"，先 `bsk logs` 看是不是这一条，别去查自己写的脚本。
+>
+> ⚠️ `bsk get-html` 失败时**会把输出重定向成 0 字节文件**（不是报错，是静默）——
+> 看到空文件先怀疑会话掉了，而不是"页面没有内容"。
 >
 > 拿到 HTML 后**不要另写一套 HTML→MD** —— 直接复用爬虫的转换器：
 > `sys.path.insert(0, r'E:\04_Tools\zhihu-spider\src')` → `converter.html_to_md(rich.decode_contents())`，
