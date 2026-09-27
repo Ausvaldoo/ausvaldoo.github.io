@@ -6,6 +6,7 @@ title: 牧神的笔记
 <script setup>
 import { data as posts } from './posts.data.js'
 import { data as seriesPosts } from './series.data.js'
+import seriesIntro from './series-intro.js'
 
 // 目录只放最新 12 篇：全量归档在 /posts/。
 // 首页是杂志目录，不是仓库清单——上百篇时把读者拖进无限滚动是失职。
@@ -17,9 +18,17 @@ const map = {}
 for (const p of seriesPosts) {
   if (p.series) (map[p.series] ??= []).push(p)
 }
-const seriesGroups = Object.entries(map).sort(
-  (a, b) => b[1].length - a[1].length || String(a[0]).localeCompare(String(b[0]), 'zh')
-)
+// 系列真卡片：按篇数排，多的在前（与 /series 页同一排序语义）。
+// 第三项 = 系列简介，来自 series-intro.js —— 供「居中放大卡」里的小字使用；
+// 未登记的系列给空串，卡片照常显示（只是没有简介）。
+const seriesGroups = Object.entries(map)
+  .sort((a, b) => b[1].length - a[1].length || String(a[0]).localeCompare(String(b[0]), 'zh'))
+  .map(([name, list]) => [name, list, seriesIntro[name] || ''])
+
+// 循环副本**必须在模板里渲染**，不能由 JS 追加：首页是 Vue 组件，
+// JS 往 stage 里 append 的节点会在下一次 patch 时被 Vue 清掉（实测只剩 11 张）。
+// 两份内容 + JS 取模定位 = 首尾相接的无限循环。
+const seriesLoop = [...seriesGroups, ...seriesGroups]
 
 // 标签倒排索引 → 三条错速滚动的标签词带。词词是真链接（/tags#tag-名）。
 const tagMap = {}
@@ -88,16 +97,34 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
     <span class="fm-series-count">({{ seriesGroups.length }})</span>
     <a class="fm-all" href="/series">全部系列 →</a>
   </div>
-  <div class="fm-series-track">
-    <a
-      v-for="[name, list] in seriesGroups"
-      :key="name"
-      class="fm-series-card"
-      :href="`/series#ser-${name}`"
+  <!-- 横向条 v14（2026-09-27 站长四条要求后重写）：
+       ① **所有卡平等** —— 取消中心放大/提亮/投影，卡宽恒定、只有位移；
+       ② **每张都带简介** —— 简介常显（不再是"只有居中卡有"）；
+       ③ **滚轮带惯性** —— 速度驱动模型（摩擦衰减），连滚加速、停手滑行；
+       ④ **到头有撞击回弹** —— 阻尼弹簧 + 撞击瞬间的极轻挤压（迪士尼式）。
+       滚轮驱动，不做左右箭头、不做桌面拖拽；点击卡片=滑到居中，已在居中的再点进系列页。 -->
+  <div class="fm-series-wrap">
+    <div
+      class="fm-series-stage"
+      :data-count="seriesGroups.length"
+      tabindex="0"
+      role="region"
+      aria-label="系列专题，可左右切换"
     >
-      <span class="sc-no">{{ String(list.length).padStart(2, '0') }} 篇</span>
-      <span class="sc-name">{{ name }}</span>
-    </a>
+      <a
+        v-for="([name, list, intro], i) in seriesGroups"
+        :key="i"
+        class="fm-series-card"
+        :href="`/series#ser-${name}`"
+        draggable="false"
+      >
+        <span class="sc-no">{{ String(list.length).padStart(2, '0') }} 篇</span>
+        <span class="sc-body">
+          <span class="sc-name">{{ name }}</span>
+          <span class="sc-desc">{{ intro }}</span>
+        </span>
+      </a>
+    </div>
   </div>
 </section>
 
@@ -108,8 +135,8 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
     <span class="fm-mq-count">({{ tagCount }})</span>
   </div>
   <div v-for="(row, r) in mqTracks" :key="r" class="fm-mq-row" :class="`is-${r}`">
-    <div class="fm-mq-track">
-      <a v-for="(t, i) in row" :key="i" class="fm-mq-tag" :href="`/tags#tag-${t[0]}`">
+    <div class="fm-mq-track" :style="`--per-copy:${row.length / 6}`">
+      <a v-for="(t, i) in row" :key="i" class="fm-mq-tag" :data-copy="Math.floor(i / (row.length / 6))" :href="`/tags#tag-${t[0]}`">
         {{ t[0] }}<sup>{{ t[1] }}</sup>
       </a>
     </div>
@@ -138,14 +165,14 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 }
 .fm-mast-title {
   font-family: var(--font-serif);
-  font-size: 22px;
+  font-size: var(--fs-h3);
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--vp-c-text-1);
 }
 .fm-mast-sub {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.18em;
   color: var(--vp-c-text-3);
   white-space: nowrap;
@@ -169,7 +196,7 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
   align-items: center;
   gap: 12px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-label);
   letter-spacing: 0.22em;
   color: var(--rust);
 }
@@ -200,19 +227,19 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 .fm-toc-title {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: 22px;
+  font-size: var(--fs-h3);
   font-weight: 700;
   color: var(--vp-c-text-1);
 }
 .fm-toc-count {
   font-family: var(--font-mono);
-  font-size: 20px;
+  font-size: var(--fs-lead);
   color: var(--rust);
 }
 .fm-all {
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--fs-label);
   color: var(--vp-c-text-3);
   text-decoration: none;
 }
@@ -233,12 +260,12 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 }
 .fm-no {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: var(--fs-label);
   color: var(--rust);
 }
 .fm-title {
   font-family: var(--font-serif);
-  font-size: 17px;
+  font-size: var(--fs-h4);
   font-weight: 600;
   line-height: 1.5;
   color: var(--vp-c-text-1);
@@ -255,7 +282,7 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 }
 .fm-excerpt {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-small);
   line-height: 1.7;
   color: var(--vp-c-text-2);
   max-height: calc(1.7em * 2);
@@ -268,7 +295,7 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 }
 .fm-meta {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-label);
   letter-spacing: 0.05em;
   color: var(--vp-c-text-3);
   white-space: nowrap;
@@ -294,59 +321,125 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 .fm-series-title {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: 22px;
+  font-size: var(--fs-h3);
   font-weight: 700;
   color: var(--vp-c-text-1);
 }
 .fm-series-count {
   font-family: var(--font-mono);
-  font-size: 20px;
+  font-size: var(--fs-lead);
   color: var(--rust);
 }
-.fm-series-track {
-  display: flex;
-  gap: 16px;
-  margin-top: 20px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  padding-bottom: 6px;
+/* 包裹层：圆钮的定位上下文 */
+.fm-series-wrap {
+  position: relative;
+  margin-top: 22px;
 }
+/* 舞台：位移式容器（**不是**原生滚动，所以不会有 scroll-snap 一卡一卡）。
+   触屏只锁横轴；禁选（否则拖拽会变成选字）；
+   初始 opacity:0，首帧定位完再淡入 —— 否则会先闪一下没排好的卡片。
+
+   ⚠️ 边缘渐隐（mask）**按位置动态收放**（2026-09-27 站长要求）：
+     "你滚到头你就把这个两边的这个虚的，你就把这个两边变成实的不就行了吗"
+   渐隐的本意是暗示"还有内容"，但滚到端点时那侧已经空了 ——
+   渐隐就只剩"把边缘那张卡糊掉"这一个作用，看着像坏了。
+   JS（setupSeriesStrip 的 syncEdge）按 pos 打 data-edge：
+     head → 收左；tail → 收右；both → 两侧都收（越界拉出橡皮筋时，要看清那道缝）。
+   渐隐宽度用 CSS 变量表述，收放就是改这两个变量的值。 */
+.fm-series-stage {
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+  cursor: default;  /* 不用 grab 小手：桌面不做鼠标拖拽；grab 在浅底上会渲染成反白一块 */
+  user-select: none;
+  -webkit-user-select: none;
+  opacity: 0;
+  /* 渐隐宽度切换做个极短的补间，避免到端点时"啪"地跳变。
+     0.18s 比一帧长、比手感阈值短 —— 读者察觉不到"切"，只觉得边缘变实了。 */
+  transition: opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+              --fm-edge-fade-l 0.18s linear,
+              --fm-edge-fade-r 0.18s linear;
+  --fm-edge-fade-l: 5%;
+  --fm-edge-fade-r: 5%;
+  -webkit-mask-image: linear-gradient(90deg,
+    transparent, #000 var(--fm-edge-fade-l),
+    #000 calc(100% - var(--fm-edge-fade-r)), transparent);
+  mask-image: linear-gradient(90deg,
+    transparent, #000 var(--fm-edge-fade-l),
+    #000 calc(100% - var(--fm-edge-fade-r)), transparent);
+}
+/* ⚠️ @property 注册后变量才可补间（否则是离散跳变）。
+   不支持 @property 的浏览器会退化成"直接切换"，不影响正确性。 */
+@property --fm-edge-fade-l { syntax: '<length-percentage>'; inherits: false; initial-value: 5%; }
+@property --fm-edge-fade-r { syntax: '<length-percentage>'; inherits: false; initial-value: 5%; }
+.fm-series-stage[data-edge='head'] { --fm-edge-fade-l: 0%; }
+.fm-series-stage[data-edge='tail'] { --fm-edge-fade-r: 0%; }
+.fm-series-stage[data-edge='both'] { --fm-edge-fade-l: 0%; --fm-edge-fade-r: 0%; }
+.fm-series-stage.is-ready { opacity: 1; }
+
+/* 卡片：absolute 定位，宽度/位移全部逐帧写 ——
+   所以这里**不设** width/transform 的 transition（会被每帧补间拖慢）。
+   v14：卡片一律浅色、一律平等（站长否掉了"反相黑卡"与"中间突出"），
+   分层只靠留白与景深，**不再**按中心权重放大/提亮。 */
 .fm-series-card {
-  flex: 0 0 236px;
-  scroll-snap-align: start;
+  position: absolute;
+  top: 50%;
+  left: 0;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 24px;
-  min-height: 128px;
-  padding: 18px 18px 16px;
+  justify-content: flex-start;   /* 上对齐：编号 → 标题 → 简介，自上而下 */
+  gap: 10px;
+  padding: 16px;
   border: 1px solid var(--vp-c-divider);
   border-radius: 2px;
+  background: var(--vp-c-bg);
+  color: inherit;
   text-decoration: none;
-  /* color 必须进同一份 transition：VP 默认给 .vp-doc a 挂 color .25s，
-     不同步就会出现"边框橘了、字还在黑→橘路上"的两段感 */
-  transition: border-color 0.25s cubic-bezier(0.22, 1, 0.36, 1),
-              background-color 0.25s cubic-bezier(0.22, 1, 0.36, 1),
-              color 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+  /* ⚠️ 只给"非逐帧"的属性加过渡：边框是阈值触发的，必须有过渡。
+     width / transform 仍然**不设**过渡（它们由 JS 每帧写，加了会被补间拖慢）。 */
+  transition: border-color 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.fm-series-card:hover {
-  border-color: var(--rust);
-  background: var(--vp-c-bg-soft);
-}
+.fm-series-card:hover { border-color: var(--rust); }
+/* v14：删掉了 .is-front 的投影与 scale —— 所有卡平等。
+   但保留「悬停/聚焦」这一层反馈（那是交互态，不是层级态）。 */
 .sc-no {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-label);
   letter-spacing: 0.08em;
   color: var(--rust);
 }
+/* 文字列宽不再需要锁死：v12 起卡片等宽，宽度恒定，文字永不回流。
+   （v11 及以前卡片会从 c 涨到 1.25c，才要靠 --measure 压住折行。） */
+.sc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+/* 标题字号**保持原样**（17px / 1.45）—— 2026-09-26 试过放大到 20px，站长否掉 */
 .sc-name {
   font-family: var(--font-serif);
-  font-size: 17px;
+  font-size: var(--fs-h4);
   font-weight: 700;
   line-height: 1.45;
   color: var(--vp-c-text-1);
 }
-.fm-series-card:hover .sc-name { color: var(--rust); }
+/* 简介：**3 行**截断，v14 起**所有卡常显**（站长要求"附有简介"）——
+   不再是"只居中卡可见"。因此卡高由最高那张统一决定，
+   JS 的 layout() 会按含简介的真实高度取齐。 */
+.sc-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--fs-small);
+  line-height: 1.55;
+  color: var(--vp-c-text-3);
+  /* 3 行高度**始终占位**：高度恒定，卡片就不会"跳一下"（"突兀"的来源之一）。 */
+  min-height: calc(1.55em * 3);
+}
 
 /* ④ 封底 */
 /* ⑤ 标签词带：节头与系列同语法，三行错速滚动，边缘渐隐，悬停暂停 */
@@ -366,19 +459,31 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 .fm-mq-title {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: 22px;
+  font-size: var(--fs-h3);
   font-weight: 700;
   color: var(--vp-c-text-1);
 }
 .fm-mq-count {
   font-family: var(--font-mono);
-  font-size: 20px;
+  font-size: var(--fs-lead);
   color: var(--rust);
 }
 .fm-mq-row {
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  /* ⚠️ 渐隐宽度用 CSS 变量：
+       · 桌面端默认 7%（就是原来那条规则）—— 桌面是**动画位移**，
+         "永远还有下一个词"，所以两侧渐隐永远成立，JS 不介入；
+       · 移动端由 JS 按 scrollLeft 动态改这两个值：已经滑到左端就把左侧渐隐收成 0，
+         滑到右端就把右侧渐隐收成 0 —— 否则最后一个词会停在渐隐区里被切掉一截。
+         这是"原生滚动 + 边缘渐隐"的经典冲突（渐隐是给容器加的，容器不滚，只有内容滚）。 */
+  --mq-fade-l: 7%;
+  --mq-fade-r: 7%;
+  -webkit-mask-image: linear-gradient(90deg,
+    transparent, #000 var(--mq-fade-l),
+    #000 calc(100% - var(--mq-fade-r)), transparent);
+  mask-image: linear-gradient(90deg,
+    transparent, #000 var(--mq-fade-l),
+    #000 calc(100% - var(--mq-fade-r)), transparent);
 }
 .fm-mq-track {
   display: inline-flex;
@@ -406,7 +511,7 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
   border: 1px solid var(--vp-c-divider);
   border-radius: 2px;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--fs-small);
   letter-spacing: 0.04em;
   white-space: nowrap;
   color: var(--vp-c-text-2);
@@ -415,7 +520,7 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
               color 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .fm-mq-tag sup {
-  font-size: 10px;
+  font-size: var(--fs-small);
   color: var(--rust);
 }
 .fm-mq-tag:hover {
@@ -423,8 +528,16 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
   color: var(--vp-c-text-1);
 }
 @media (prefers-reduced-motion: reduce) {
+  /* ⚠️ 关动画的同时必须一起放开原生滚动 ——
+     否则"停掉动画"就变成"内容冻住且滑不动"（比动效本身更糟）。 */
   .fm-mq-track { animation: none; }
-  .fm-mq-row { overflow-x: auto; }
+  .fm-mq-row {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    touch-action: pan-x;
+  }
+  .fm-mq-row::-webkit-scrollbar { display: none; }
 }
 
 /* ④ 封底：站长的签名 */
@@ -437,7 +550,7 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 .fm-colophon p {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: 20px;
+  font-size: var(--fs-lead);
   font-style: italic;
   color: var(--vp-c-text-1);
 }
@@ -445,7 +558,7 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
   display: block;
   margin-top: 10px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-label);
   letter-spacing: 0.1em;
   color: var(--vp-c-text-3);
 }
@@ -453,7 +566,7 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
   display: block;
   margin-top: 26px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.08em;
   color: var(--vp-c-text-3);
   opacity: 0.75;
@@ -470,25 +583,47 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
   /* 手机端词带：只留一行，但**必须能手动滑动**。
      三行在 390px 窄屏上会织成一张密网，每行只露 3-4 个词，
      失去"一条一条读"的节奏——所以留 is-0 一行。
-     但 overflow:hidden 会连手指滑动一起禁掉（上一版的失误），
-     窄屏改成 overflow-x:auto + 触摸暂停动画：默认自动滚，
-     手指一搭就停下让位给手动滑，松手后动画继续。 */
+
+     ⚠️⚠️ 2026-09-27 重写（站长反馈："手机上滚动标签，标签会滚到消失、找不回来"）：
+     旧做法是「CSS 动画持续 translateX」+「overflow-x:auto 手滑」**并存** ——
+     这两者是**互斥的位移模型**，叠加起来就会飞：
+       · 动画每帧都在写 transform，手指滑动写的是 scrollLeft；
+       · track 又是 `width:max-content` 重复 6 遍（约 6 倍屏宽），
+         手指滑出去的是 scrollLeft，但视觉位置被 transform 又推走一大截；
+       · 结果：词带一路滑到空白区，怎么往回拨都回不来（动画还在推）。
+     正解：**移动端不要动画，只留原生横向滚动**。
+       scrollLeft 是唯一的位置真相 → 滚到哪停哪，永远能滑回来；
+       再配 scroll-snap 让它停在词与词之间，手感干净。
+     桌面端不受影响（那里靠 :hover 暂停 + 鼠标滚轮，没有这个问题）。 */
   .fm-mq-row.is-1,
   .fm-mq-row.is-2 { display: none; }
   .fm-mq-row.is-0 {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    /* 滑动时让浏览器接管横向手势，别被纵向 Lenis 抢走 */
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
   }
   .fm-mq-row.is-0::-webkit-scrollbar { display: none; }
-  /* ⚠️ 必须带 .fm-mq-row 前缀：桌面的 .fm-mq-row.is-0 特异性 (0,2,0)
-     会压过裸的 .fm-mq-track (0,1,0)，实测移动端拿到的是 78s 不是这里写的值。 */
+  /* ⚠️ 关键一条：**关掉自动滚动动画**。
+     没有它，手指滑出的 scrollLeft 会和动画的 transform 叠加，词带会飞走。 */
   .fm-mq-row.is-0 .fm-mq-track {
-    animation-duration: 46s;
+    animation: none;
   }
-  /* 触屏设备：桌面那条 :hover 暂停规则在这里会失效（无 hover），
-     所以补一条 :active —— 手指按住时停住，让手动滑动说了算。 */
-  .fm-mq-row.is-0:active .fm-mq-track { animation-play-state: paused; }
+  /* 关掉动画后 track 不再需要"重复多份做无缝循环"。
+     HTML 层为了桌面的无缝动画把每行重复了 6 遍（内容 ×6），
+     移动端既没动画、又要手滑，留着 6 份就是让读者白滑 5000px 还看 6 遍同样的词。
+     所以：**移动端只留第 1 份**（data-copy === 0）。 */
+  .fm-mq-row.is-0 .fm-mq-tag:not([data-copy="0"]) {
+    display: none;
+  }
+  .fm-mq-row.is-0 {
+    scroll-snap-type: x proximity;
+  }
+  .fm-mq-row.is-0 .fm-mq-tag {
+    scroll-snap-align: start;
+  }
 }
 </style>
 

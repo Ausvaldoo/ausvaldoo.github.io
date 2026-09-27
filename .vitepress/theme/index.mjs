@@ -1947,38 +1947,781 @@ function setupHeroFly() {
 }
 
 /**
- * 词带触摸滑动（手机端）：transform 动画与手动滚动是两套坐标系，
- * 同时开着会互相拉扯 —— 手指刚滑走，动画下一帧又把轨道拉回原位。
- * 所以触摸开始时直接停掉 CSS 动画，让原生惯性滚动全权接管；
- * 触摸结束后把动画的位置接回去（重置 delay 从当前位置续播会突兀，
- * 这里选择"松手即从动画起点重新走"—— 46s 一圈、视觉上没人追得到断点）。
+ * 词带滚动行为（手机端）。
+ *
+ * ⚠️⚠️ 2026-09-27 重写（站长反馈："手机上滚动标签，标签会滚到消失、找不回来"）。
+ *
+ * 旧版做的是「触摸时暂停 CSS 动画、松手恢复」—— 那是在**动画 + 手滑并存**的前提下的补丁。
+ * 那个前提本身就是错的：CSS 动画写 `transform`，手指滑动写 `scrollLeft`，
+ * 两套位移模型叠加，词带会一路飞出可视区且**怎么拨都回不来**（动画还在推）。
+ * 现在移动端已经**彻底关掉动画**（`index.md` 窄屏规则里 `animation: none`），
+ * 唯一的位置真相就是 `scrollLeft` —— 滚到哪停哪，永远能滑回来。
+ *
+ * 所以这个函数的职责只剩一件正事：**边缘渐隐的按需收放**。
+ *   · 容器加了 `mask-image` 左右各渐隐 7%（桌面端动画用，永远成立）；
+ *   · 但移动端是原生滚动，**容器不滚、只有内容滚** ——
+ *     一旦滑到两端，最边上的那个词会停在渐隐区里，被切掉一截（看着像"坏了"）。
+ *   · 所以按 scrollLeft 动态改 `--mq-fade-l` / `--mq-fade-r`：
+ *     贴左端 → 左侧渐隐归 0；贴右端 → 右侧渐隐归 0；中间 → 两侧都恢复 7%。
  */
 function setupMarqueeTouch() {
   const rows = () => Array.from(document.querySelectorAll('.fm-mq-row.is-0'))
+  const EDGE_SLOP = 2   // 判定"贴边"的容差（px）：滚动有亚像素，不能要求严格 === 0
+  const updateFade = (row) => {
+    const max = row.scrollWidth - row.clientWidth
+    /* 不能滚（内容比容器窄）→ 两侧都不渐隐（没有"还有更多"可言） */
+    if (max <= 1) {
+      row.style.setProperty('--mq-fade-l', '0px')
+      row.style.setProperty('--mq-fade-r', '0px')
+      return
+    }
+    const atStart = row.scrollLeft <= EDGE_SLOP
+    const atEnd = row.scrollLeft >= max - EDGE_SLOP
+    row.style.setProperty('--mq-fade-l', atStart ? '0px' : '7%')
+    row.style.setProperty('--mq-fade-r', atEnd ? '0px' : '7%')
+  }
   const bind = (row) => {
     if (row.dataset.touchBound) return
     row.dataset.touchBound = '1'
-    const track = row.querySelector('.fm-mq-track')
-    if (!track) return
-    row.addEventListener('touchstart', () => {
-      track.style.animationPlayState = 'paused'
-    }, { passive: true })
-    row.addEventListener('touchend', () => {
-      track.style.animationPlayState = 'running'
-    }, { passive: true })
-    // 手指离开但浏览器仍在惯性滚动时，动画继续跑会"抢"位置 —— 等滚动停稳再恢复
-    row.addEventListener('scroll', () => {
-      track.style.animationPlayState = 'paused'
-      clearTimeout(row._mqTimer)
-      row._mqTimer = setTimeout(() => {
-        track.style.animationPlayState = 'running'
-      }, 180)
-    }, { passive: true })
+    /* 滚动中：只更新渐隐。用 rAF 节流，避免高频 scroll 事件里连环写样式。 */
+    let ticking = false
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => { ticking = false; updateFade(row) })
+    }
+    row.addEventListener('scroll', onScroll, { passive: true })
+    /* 首屏 + 断点切换时也要对一次（初始 scrollLeft=0 → 左侧渐隐归 0） */
+    updateFade(row)
+    row._mqUpdateFade = () => updateFade(row)
   }
-  const arm = () => rows().forEach(bind)
+  const arm = () => {
+    /* ⚠️ 桌面端不要碰：桌面是动画位移，两侧渐隐永远成立。
+       这里只处理窄屏真正可滚的那一行（.is-0 在窄屏可见、在桌面也可滚）。
+       判断"是否真的可滚"由 updateFade 内部按 scrollWidth 决定，天然安全。 */
+    rows().forEach(bind)
+  }
+  /* ⚠️⚠️ 必须多帧重试：enhanceApp 早于首页组件挂载，
+     此刻 .fm-mq-row 还不存在 —— 只调一次 arm() 会空跑，
+     于是 --mq-fade-l/r 永远停在默认的 7%，贴边的那个词被渐隐切掉。
+     （2026-09-27 实测踩到：贴左端 fl 仍是 7%。）
+     bind 内有 dataset.touchBound 守卫，重复调用无害；找不到就重试若干帧。 */
   arm()
-  // 断点切换（桌面 ↔ 手机）会换掉哪一行可见，resize 时重新绑定
-  window.addEventListener('resize', arm, { passive: true })
+  let tries = 0
+  const armRetry = () => {
+    arm()
+    if (!document.querySelector('.fm-mq-row.is-0[data-touch-bound]') && ++tries < 20) {
+      requestAnimationFrame(armRetry)
+    }
+  }
+  requestAnimationFrame(armRetry)
+  /* 断点切换（桌面 ↔ 手机）会换掉哪一行可见、也会改变可滚宽度 → 重新对一次 */
+  window.addEventListener('resize', () => {
+    arm()
+    rows().forEach((r) => r._mqUpdateFade && r._mqUpdateFade())
+  }, { passive: true })
+  return arm
+}
+
+/**
+ * 系列专题横带（2026-09-26 v8 —— **逐行对照 linearfestivals 的实现**）。
+ *
+ * 参考站组件（`原站存档/…/_files/0zqrn7anp54_4.js.下载`，搜 `data-card` / `Previous event`）
+ * 的真实逻辑，逐条抄在下面（左侧是它的原表达式，右侧是本实现的对应）：
+ *
+ *   它的 b()（布局）：
+ *     t = e.clientWidth >= 1280 ? 5 : 3            → 可见张数按**容器宽**分档
+ *     u = (c = p / t) * a.length                   → 基准卡宽 c；环形模长 u = c×卡数
+ *     f = y() ;  y = () => p / 2 - c / 2           → 首张居中的初始偏移
+ *     height = 1.25c*1.1 ; 卡高 = 1.25c            → 竖版卡，容器留给放大
+ *
+ *   它的 v()（每帧）：
+ *     r = ((t*c + e + c) % u + u) % u - c          → 环形包裹（**按均匀 c 取模**）
+ *     o[t] = r + c/2                               → 卡中心（均匀网格）
+ *     i = power1.inOut(max(0, 1 - |o[t] - p/2| / c))  → 权重
+ *     v[t] = c*(1 + .25*i)                         → 宽只放大 25%
+ *     b[t] = 1 + (1.1-1)*i                         → scale 1.1
+ *     y[t] = v[t]*b[t]                             → 有效宽（含 scale）
+ *     O[n] = O[t] ± y[t]/2 ± y[n]/2                → 从中心向两端半宽相加铺排（**无间隙**）
+ *     zIndex = 1 + round(10*i)                     → 越靠中心越上层
+ *     脏检查：|v-g|>.1 才写 width；zIndex 变了才写
+ *
+ *   它的交互：
+ *     Draggable.create(s,{type:"x", inertia:true, allowNativeTouchScrolling:true,
+ *                         snap: e => Math.round(e/c)*c, ...})   ← **移动感来自这里**
+ *     圆钮 onClick → gsap.to(s,{x:'+='+delta, duration:.6, ease:'power3.out', onUpdate:v})
+ *     focusin → 把聚焦卡拉到中心
+ *
+ * ── 我之前的两个自作聪明（都已被站长否掉，记在这里别再犯）────────────────
+ *   1. 加了 `kg = k^1.8` 让"弹出滞后" → 与他的连续曲线不符，反而造成"先滚完再弹"的割裂感；
+ *   2. 把中心卡放大到 1.6 倍 → 他只放大 1.25，是"展开一点"而不是"撑满"。
+ *   现在宽度/缩放/简介**全部直接用权重 i**（连续、跟手）。
+ *
+ * ── 与参考站的两处有意偏离（都是站长明确要求的）──────────────────────
+ *   · 可见张数取 **5**：他的是**通栏**容器，我们在内容栏内；
+ *   · v14 起**所有卡都带简介**（他本来就是所有卡都带副行），
+ *     且**取消中心放大** —— 卡片一律平等。
+ */
+
+/* ══ v14「迪士尼」横带（2026-09-27 第 N 轮重写）═════════════════════
+ *
+ * 站长四条要求，逐条对应的技术手段：
+ *
+ *   ① 「不要中间那个突出来了，所有都平等吧」
+ *      → 删掉一切**按中心权重**的差异：scale、opacity 衰减、is-front 阴影、zIndex 阶梯。
+ *        所有卡同宽同高同亮度。位移**只有** translate3d。
+ *        副作用是好的：paint() 从"每卡 8 次样式写"降到"每卡 1 次 transform"，
+ *        弱机不再掉帧（旧版 11 张卡最多 88 次写/帧）。
+ *
+ *   ② 「附有简介」
+ *      → 简介从"仅居中卡可见（opacity:var(--o)）"改为**常态显示**。
+ *        因此卡高由最高那张统一决定，舞台高度要**重新算**（v13 的高度是为
+ *        "只有一行简介"设计的，不改会截断）。
+ *
+ *   ③ 「滚轮滚动的时候，有加速和减速的惯性」
+ *      → 位移模型从**位置驱动**换成**速度驱动**（这是本轮的核心改动）：
+ *        旧：wheel → target += amt      （每个事件直接改位置，格子感）
+ *        新：wheel → vel += amt * KICK  （事件只"推一把"）
+ *            每帧：vel *= FRICTION        （摩擦：手指离开后自己减速）
+ *                  pos += vel             （积分出位移）
+ *        连续滚动时 vel 会累积 → 越滚越快（加速）；
+ *        停手后 FRICTION 指数衰减 → 滑行一段再停（减速）。
+ *
+ *   ④ 「到头后会有撞击的反弹」
+ *      → 撞到端点（0 或 N-1）时把 |vel| 的一部分**反向**打回去（衰减反弹），
+ *        同时进入**弹簧**状态：位置被拉出边界后，弹簧力把它拉回。
+ *        两者叠加 = 撞墙 → 弹回 → 余振衰减 → 停稳。
+ *
+ * ── 迪士尼那套（12 条基本原则）里真正用到的几条 ──────────────────
+ *   · **Squash & Stretch（挤压拉伸）**：只在**撞击瞬间**给卡片一层极轻的
+ *     横向挤压（scaleX 0.985）+ 纵向补偿（scaleY 1.012），幅度小到几乎看不见，
+ *     但手感上就是"碰了一下有质量"。**不做**夸张形变（那是卡通，不是杂志）。
+ *   · **Slow In / Slow Out（缓入缓出）**：靠摩擦模型天然获得 ——
+ *     指数衰减的尾巴就是最好的缓出，不需要手动配贝塞尔。
+ *   · **Anticipation / Follow Through（预备 / 跟随）**：
+ *     撞击前速度先降（摩擦）、撞击后余振（弹簧阻尼）—— 这两段本身就是
+ *     预备与跟随，不需要额外关键帧。
+ *   · **Exaggeration（夸张）适度**：所有系数都取**小值**。
+ *     站长的审美是克制的，迪士尼的"夸张"在这里=幅度足够被感知，而不是刺眼。
+ *
+ * ── 为什么不用 GSAP / 不引依赖 ──────────────────────────────────
+ *   需要的只是一阶摩擦 + 一阶弹簧，不到 30 行。引一个 60KB 的库进来，
+ *   在沙箱里还是个构建风险（本站构建走 CI，本地跑不动 emptyDir）。
+ *   自己写反而可控：每个常数都能被解释、被复算。
+ */
+
+/* 手感常数（都小、可解释；改这里就是调手感，别去动逻辑）
+ *
+ * ⚠️ 这些数不是拍脑袋来的，是**解出来的**（2026-09-27）：
+ *   一次滚轮的总位移 = 速度的几何级数和 = v₀ / (1 − FRICTION)  （单位：卡位）
+ *   而 v₀ = delta × KICK。所以「一格滚轮走几张卡」=
+ *       delta × KICK / (1 − FRICTION)
+ *   要求「**一格 = 一张卡**」（符合同步直觉），代入 delta=120：
+ *       120 × KICK / (1 − 0.90) = 1  →  KICK = 0.000833
+ *
+ *   我第一版随手取 KICK=0.0052 / FRICTION=0.935，算下来单格 = 120×0.0052/0.065
+ *   = **9.6 张卡** —— 一格滚轮直接飞到列表尽头。实测（仿真）才抓到，
+ *   肉眼在浏览器里只会觉得"怎么老是跳到最后"，很难定位到是这两个常数。
+ */
+const STRIP = {
+  /* ③ 惯性
+     ⚠️ 手感旋钮的**分工**（2026-09-27 站长反馈"滚太快"，据此调）：
+       · 慢拨一格走多远 —— 由 KICK 决定（要**准**，所以不动）
+       · 快滚最多冲多远 —— 由 MAX_VEL 决定（要**稳**，所以砍了）
+     两个数是不同职责，别把"太快"错怪到 KICK 上：
+       KICK 一改，慢拨就不准了（一格走不满一张卡）；快滚失控是 MAX_VEL 的锅。 */
+  KICK: 0.000833,    // wheel delta(px) → 速度增量(卡/帧)。反推自"一格=一卡"，见上
+  FRICTION: 0.90,    // 每帧速度保留率。0.90 比 0.935"刹车更灵"，
+                     // 否则滑行尾巴太长（单格要 1.5 秒才停，观感是"飘"）
+  /* MAX_VEL：0.18 卡/帧 ≈ 10.8 卡/秒。
+     （原 0.30 = 18 卡/秒，站长嫌"滚太快"；饱和滑行从 3.0 卡位降到 1.8 卡位。）
+     慢拨一格仍 ≈1 卡（KICK 未动），但连滚最多只多滑不到 2 张 —— 手感变沉。 */
+  MAX_VEL: 0.18,
+  VEL_EPS: 0.0004,   // 小于此速度视为静止（防浮点尾巴永远不收敛）
+  /* ④ 橡皮筋越界（2026-09-27 站长最终定稿）
+     站长原话：「像把一个布袋弹簧拉开，然后它又归拢 —— 拉到头了再往上拉，
+               就会像弹簧一样把你拉回去，然后会有一个小口子。」
+     所以要做到三件事，缺一不可：
+       a) 拉的时候**越拉越拉不动**          → RUBBER_K（事件侧吃速度）
+       b) 松手**弹回去**                    → SPRING_K / SPRING_D（帧侧回位）
+       c) 回弹**冲过一点点再收住**（小口子） → SPRING_RETAIN
+     ⚠️⚠️ 这三个数的关系是数学性的，别凭感觉调（2026-09-27 用模拟器定标，
+         踩过一个致命坑，见 spring() 上方注释）：
+         旧值 SPRING_K=0.10 / SPRING_D=0.88 → 越界后**永远回不来**，
+         实测「狂滚 40 格本该停在 0，却停在 +1.00」——
+         因为弹簧只在 pos<0 时施力，过冲到正侧后它把 vel 留成正值，
+         带着这个速度一路滑走（滑了 0.52 卡才停）。
+         这不是"过冲太大"，是**结构错误**。
+     现在的组合 K=0.12 / D=0.70 / RETAIN=0.62 经模拟定标：
+         拉深 0.2 卡 → 过冲 1.8px；0.3 卡 → 3.9px；0.6 卡 → 17.7px；1.0 卡 → 34.6px；
+         且**终值一律收敛到 0.0007**（再由吸附收到整卡位）。
+         就是"轻拉小口子、狠拉大回弹"。 */
+  SPRING_K: 0.12,      // 弹簧刚度：越界后的回位加速度系数
+  SPRING_D: 0.70,      // 弹簧阻尼：保留率。<1 才收敛。越小回弹越快、过冲越小
+  SPRING_RETAIN: 0.62, // ⚠️「小口子」的来源：刚回到界内那一帧，把回弹速度打个折，
+                       //    剩下的那点速度就是过冲的量。越大口子越大（0.62 → 数 px 到数十 px）
+  RUBBER_K: 6.0,       // 橡皮筋阻力系数：越界 1 卡位时，后续推进只剩 1/7。
+                       // 越大越"拉不动"（越像拉紧的筋），越小越松。
+  SQUASH: 0.015,       // 撞击瞬间的挤压幅度（scaleX 减、scaleY 补偿）—— 极小
+}
+function setupSeriesStrip() {
+  if (typeof window === 'undefined') return () => {}
+  /* ⚠️ VER 是热更新的命门（2026-09-27 踩到，坑了一整晚）：
+     VitePress HMR 时 **DOM 元素会被复用**，若只用 `dataset.stripBound` 判"绑过没"，
+     新代码会被旧标记挡在门外 —— 页面继续跑旧闭包，改了等于没改。
+     典型症状：明明修好了点击，读者那边点了还是直接跳转。
+     所以：版本号变了就先 dispose（AbortController 一次性解绑全部监听）再重绑。 */
+  const VER = 'v16'
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v)
+  const gac = new AbortController()
+
+  const bind = (stage) => {
+    if (stage.dataset.stripBound === VER) return
+    if (stage.__fmStrip && stage.__fmStrip.dispose) stage.__fmStrip.dispose()
+    const cards = Array.from(stage.querySelectorAll('.fm-series-card'))
+    if (!cards.length) return
+    const N = cards.length
+    stage.dataset.stripBound = VER
+    /* Lenis 的**官方**跳过约定（双保险，见 vendor/lenis.mjs 的 onVirtualScroll）：
+       它在 window 上收 wheel，然后沿 event.composedPath() 找这个属性，
+       找到了就当没看见。有了它，即使将来 stopPropagation 因为别的原因失效
+       （比如监听器挂到了 document 上、或 Lenis 换实现），页面也不会被带走。
+       注意：只挂 prevent-wheel，不挂 prevent —— 后者会把触屏滑动也一起废掉。 */
+    stage.setAttribute('data-lenis-prevent-wheel', '')
+
+    const ac = new AbortController()
+    const on = (el, ev, fn, o) =>
+      el.addEventListener(ev, fn, Object.assign({}, o || {}, { signal: ac.signal }))
+
+    /* ── 几何（v14：卡宽下限由「三行简介排得下」反推，不是拍脑袋）──────
+       简介最长 41 字，要排满 3 行 → 每行 ≥ 41/3 = 13.67 字。
+       13px 字号下汉字全宽 13px → 列宽 ≥ 13.67 × 13 = 177.7px。
+       加左右 padding 32px → **卡宽下限 210px**。
+       ⚠️ 我第一版随手写了 176 —— 那是"列宽"不是"卡宽"，漏了 padding，
+          会直接把简介截断（实测 176px 卡 → 列宽只 144px → 每行 11 字 → 只能放 33 字）。
+       上限 232px 是"别只剩 4 张"的约束（内容栏 1152px / 5 张 = 218px 才是理想值）。 */
+    const GAP = 12
+    const CARD_MIN = 210
+    const CARD_MAX = 232
+    let cardW = 218
+    let step = 230
+    const metrics = () => {
+      const W = stage.clientWidth || 1
+      const vw = window.innerWidth || 1280
+      /* v14：卡片必须够宽才装得下三行简介，所以可见张数不再往上堆：
+         5 张已是上限（1152/5 = 218px，正好落在上下限之间）。 */
+      const visible = vw >= 1180 ? 5 : vw >= 900 ? 4 : vw >= 620 ? 3 : 2
+      const raw = W / visible - GAP
+      cardW = Math.round(Math.max(CARD_MIN, Math.min(CARD_MAX, raw)))
+      step = cardW + GAP
+    }
+    const layout = () => {
+      metrics()
+      /* 高度：先让内容自然撑开，取最高的那张当统一高度 ——
+         否则长标题的卡高、短标题的卡矮，看着就不齐。
+         ⚠️ v14：简介已**全部常显**，这里是"含简介"的真实高度（旧版不是）。
+         卡片在容器里**垂直居中**，卡片内部**自上而下**（编号 → 标题 → 简介）。 */
+      cards.forEach((el) => { el.style.width = cardW + 'px'; el.style.height = 'auto' })
+      let h = 0
+      cards.forEach((el) => { if (el.offsetHeight > h) h = el.offsetHeight })
+      cards.forEach((el) => { el.style.height = h + 'px' })
+      /* v14：舞台高度 = 卡高 + 上下各 14px 呼吸。旧版那个 ×1.06 是为
+         "中心卡被放大"留的余量，现在卡片不再放大，用固定 padding 更准。 */
+      stage.style.height = Math.round(h + 28) + 'px'
+    }
+
+    /* ── 位置/速度状态（v14 核心）──────────────────────────
+       pos  ：当前渲染位置（浮点卡位，0 = 第 0 张居中）
+       vel  ：当前速度（卡/帧）。**唯一的状态机** —— 位置由它积分而来。
+       squash：撞击挤压量 0..1，逐帧衰减到 0。 */
+    let pos = 0
+    let vel = 0
+    let squash = 0
+    let dragging = false
+    const MAXP = N - 1
+
+    /* ── 橡皮筋越界（rubber band）───────────────────────────
+       站长要的是「拉到头再拉，像橡皮筋被拽住、然后弹回去」——
+       不是"撞一下"，是**持续对抗 + 松手回弹**。做法学 iOS：
+       越界越远，能继续推进的量越小（阻尼），松手后欠阻尼弹回。
+
+       阻力施加在「往界外推的**速度增量**」上（事件侧），不是硬改 pos
+       —— 硬改 pos 会跳帧。于是"越拉越拉不动"来自 velocity 被吃掉，
+       "松手弹回"来自 spring()。 */
+    const rubber = (out, dirSign) => {
+      /* out    : 本次事件想给界外方向加的速度（带符号）
+         dirSign: +1 = 往"头"外推（pos 想变负）；-1 = 往"尾"外推 */
+      const over = dirSign > 0 ? Math.max(0, -pos) : Math.max(0, pos - MAXP)
+      const ease = 1 / (1 + over * STRIP.RUBBER_K)   // over=0 → 1（全给）；越大越吃
+      return out * ease
+    }
+
+    /* 弹簧回位：把越界的位置往边界里拉（每帧一步）。
+       ⚠️⚠️ 结构性坑（2026-09-27 实测抓出，比"调参数"严重得多）：
+       早先写成「pos<0 时给回位力」，看似合理，实则是**弹射器**：
+         拉到 -0.40 松手 → 弹簧把它往回推 → 推到 pos 刚过 0 的那一帧，
+         弹簧条件 `pos<0` 不再成立 → **停止施力**，
+         但 vel 此刻已经是正值（约 0.09/帧）→ 它带着这个速度一路正滑，
+         靠 FRICTION 慢慢衰减，滑出 0.52 卡才停。
+       症状：滚到头再滚，本该弹回 0，结果**跑到 +1.00 去**（实测轨迹
+             0.00 → -0.40 → -0.20 → +0.07 → +0.24 → +0.63 → +1.00）。
+       这不是阻尼不够，是**弹簧没在回到边界时收掉速度**。
+       修法（本版）：记一个 `wasOut` 标记 —— 当 pos 从界外**回到界内的那一帧**，
+       把 vel 乘以 SPRING_RETAIN 打掉大部分速度，只留一点点当过冲（"小口子"）。
+       剩下的小速度由吸附（|vel|<0.004 时收到整卡位）兜底收回 0。 */
+    let wasOut = false
+    const spring = () => {
+      const lo = 0, hi = MAXP
+      const over = pos < lo ? -1 : pos > hi ? 1 : 0
+      if (over) {
+        wasOut = true
+        vel += (over < 0 ? lo - pos : hi - pos) * STRIP.SPRING_K  // 朝界内的加速度
+        vel *= STRIP.SPRING_D                                     // 阻尼
+        return true
+      }
+      /* 刚回到界内这一帧：把"回弹攒出来的速度"打掉大半 → 只留下微小过冲。 */
+      if (wasOut) { wasOut = false; vel *= STRIP.SPRING_RETAIN }
+      return false
+    }
+
+    /* ── 越过边界时：只做一次"触感提示"，**不再反向速度** ─────────
+       ⚠️⚠️ 为什么把 vel 反向去掉了（2026-09-27 定稿）：
+       这一版改成**橡皮筋**手感（站长明确要求："拉到头像橡皮筋被拽住"）。
+       橡皮筋的正确物理是：
+         往界外拉 → 阻尼（rubber，事件侧）＋ 回位力（spring，帧侧）；
+         松手 → 欠阻尼弹回（带 overshoot）。
+       而"把速度反向"是**刚性碰撞**的物理（台球撞库），
+       它和"弹簧回位"是两套互斥的模型 —— 两套同时上，就在边界上对冲 = 抖
+       （实测：连推时 pos 在 −0.038 来回、squash 卡在 0.348 不衰减）。
+       所以只留弹簧那条线。squash 仍给一次（撞上的那个瞬间有"咯"一下的触感），
+       但它不再和速度反向绑定，纯装饰、快速衰减。 */
+    let wasOver = false
+    const collide = () => {
+      const nowOver = pos < 0 || pos > MAXP
+      if (nowOver && !wasOver) squash = 1   // 刚越界：记一次挤压（触感），不改速度
+      wasOver = nowOver
+    }
+
+    /* ⚠️ 边缘渐隐的收放（2026-09-27 站长要求）：
+       "你滚到头你就把这个两边的这个虚的，你就把这个两边变成实的不就行了吗"
+       —— stage 上加了 mask-image 左右各 5% 渐隐（暗示"还有内容"）。
+       但滚到端点时，那侧已经**没有内容**了，渐隐就变成了"把边缘那张卡糊掉"，
+       看着像坏了（实测 pos=0 时第 0 张左边缘距 stage 只有 6px，
+       正好落在 5% 渐隐区里）。
+       所以按 pos 给 stage 打两个标记，CSS 用它们把对应侧的渐隐收成 0：
+         data-at-head → 左渐隐 0（首卡完整）
+         data-at-tail → 右渐隐 0（末卡完整）
+       越界（拉出橡皮筋）时**两侧都收**—— 这时候要看清"那道缝"，
+       渐隐会把缝糊掉（站长要的正是"拉开一道缝隙"）。
+       用属性而不是直接写 style：CSS 侧改起来更集中，也便于 :hover 等状态叠加。 */
+    let edgeState = ''
+    const syncEdge = () => {
+      const head = pos <= 0.05
+      const tail = pos >= MAXP - 0.05
+      const over = pos < -0.001 || pos > MAXP + 0.001
+      const next = over ? 'both' : head && tail ? 'both' : head ? 'head' : tail ? 'tail' : ''
+      if (next === edgeState) return
+      edgeState = next
+      if (next) stage.setAttribute('data-edge', next)
+      else stage.removeAttribute('data-edge')
+    }
+
+    const paint = () => {
+      const W = stage.clientWidth || 1
+      const half = W / 2
+      /* v14：不再把 pos 钳到范围内 —— 越界要**看得见**（那就是回弹）。
+         但仍要算边界平移，保证首尾不出现空档。 */
+      const p = clamp(pos, 0, MAXP)
+      let shift = 0
+      if (N > 1) {
+        const c0 = half + (0 - p) * step
+        const cN = half + (MAXP - p) * step
+        const minC = step / 2
+        const maxC = W - step / 2
+        if (c0 > minC) shift = minC - c0
+        else if (cN < maxC) shift = maxC - cN
+      }
+      syncEdge()   // 端点/越界 → 收放该侧的边缘渐隐（见上方注释）
+      /* 挤压：撞击瞬间 scaleX 略缩、scaleY 略涨（体积守恒的轻量版）。
+         幅度 SQUASH=0.015 → 最大约 1.5%，肉眼几乎看不出，但手感有质量。 */
+      const sq = squash * STRIP.SQUASH
+      const sx = 1 - sq
+      const sy = 1 + sq
+      for (let i = 0; i < N; i++) {
+        const el = cards[i]
+        const d = i - pos           // ⚠️ 用 pos（含越界），这样回弹时整体一起弹
+        const ad = Math.abs(d)
+        if (ad > 5.2) {             // 远处藏掉：省样式写（弱机不掉帧）
+          if (el.style.visibility !== 'hidden') {
+            el.style.visibility = 'hidden'
+            el.style.pointerEvents = 'none'
+          }
+          continue
+        }
+        if (el.style.visibility === 'hidden') el.style.visibility = ''
+        const cx = half + d * step + shift
+        /* v14：**唯一**的 transform 写 —— 位移 + （撞击时的）轻微形变。
+           没有 scale 权重、没有 opacity 衰减：所有卡一律平等。
+           translate3d 带负 y 半高是为了 top:50% 后居中。 */
+        el.style.transform =
+          `translate3d(${(cx - cardW / 2).toFixed(2)}px, -50%, 0)` +
+          (sq > 0.0001 ? ` scale(${sx.toFixed(4)}, ${sy.toFixed(4)})` : '')
+        el.style.pointerEvents = 'auto' // 屏幕内的卡一律可点
+      }
+    }
+
+    /* ── 动效主循环（v14：摩擦积分 + 弹簧 + 挤压）────────────
+       一个 rAF 循环里同时跑四件事，因为它们是**耦合**的，顺序有意义：
+         collide（判撞，可能把 vel 反向）
+         → spring（越界回位）
+         → 积分（pos += vel）
+         → 摩擦（vel *= FRICTION）
+
+       ⚠️⚠️ 这里踩过一个**会让整个效果完全失效**的坑（2026-09-27，实测抓到）：
+         旧写法在**第一帧**就做"收敛判定"，而第一帧跑在滚轮事件**之前** ——
+         此刻 pos/vel/squash 全为 0、pos 又正好是整卡位，于是立刻判定 settled → 停帧。
+         接着滚轮事件到来、`kick()` 想重启循环，但状态已经被清成静止，
+         下一帧又立刻 settled —— **循环永远只跑一帧**，读者什么都看不到。
+         症状极像"改了个寂寞"：代码全对，就是没效果。
+         修法：引入 `needFrames` 显式计数 —— 只要有滚轮/点击/拖动灌进来，
+         就至少把它跑完；**收敛判定只在"本帧没有被灌过"时才允许触发**。 */
+    let raf = 0
+    let needFrames = 0
+    const tick = () => {
+      /* ⚠️ 顺序有讲究，改之前先读完（2026-09-27 反复踩）：
+         1) collide：先判"这一步是不是撞墙了"，撞了就把速度反向（反弹）；
+         2) 积分 + 摩擦；
+         3) spring：若已越界，给一个回位力；
+         4) 吸附：速度停了就收到整卡位 —— 这一步**不能**被 spring 的 active 挡住，
+            否则会停在 0.077 这种"差一点点到不了位"的地方（P9 轨迹实测）。 */
+      collide()
+      if (!dragging) {
+        pos += vel                       // ③ 积分：位置来自速度
+        vel *= STRIP.FRICTION            // ③ 摩擦：手离开后自然减速
+        if (Math.abs(vel) < STRIP.VEL_EPS) vel = 0
+      }
+
+      /* 越界中 → 弹簧回位（在积分之后判，保证读到的是本帧真实位置）。
+         v15：这里就是**橡皮筋**的回弹力来源。
+         越界时每帧给一个朝内的力 + 阻尼 → 松手后欠阻尼弹回（有过冲）。
+         ⚠️ 不再有"只在冷却期外才加力"那套 —— 那套是为上一版的"速度反向"服务的，
+            反向撤掉后，弹簧可以直接、唯一地负责回位（单一模型才不抖）。 */
+      const overNow = pos < 0 || pos > MAXP
+      let active = overNow
+      if (overNow) spring()
+
+      if (!dragging && !overNow) {
+        /* 吸附：速度几乎停、且**不在越界中**才吸到整卡位。 */
+        if (Math.abs(vel) < 0.004) {
+          const snapped = Math.round(pos)
+          const dd = snapped - pos
+          if (Math.abs(dd) > 0.0006) {
+            pos += dd * 0.22              // 缓入缓出的尾巴（Slow Out）
+            active = true
+          } else {
+            pos = snapped
+            vel = 0
+          }
+        }
+        if (vel !== 0) active = true
+      }
+
+      squash *= 0.86                     // 挤压衰减（≈ 每帧留 86%）
+      if (squash < 0.002) squash = 0
+
+      paint()
+
+      /* 本帧是被"灌进来的"（滚轮/点击刚发生）→ 无条件继续跑 */
+      if (needFrames > 0) { needFrames--; raf = requestAnimationFrame(tick); return }
+
+      /* 收敛判定：速度没了、没在越界、挤压也归零 → 停帧。
+         ⚠️ 只有 needFrames 归零后才允许判定（见上方大注释）。 */
+      const settled =
+        !active && !dragging && vel === 0 && squash === 0 &&
+        Math.abs(pos - Math.round(pos)) < 0.0006
+      if (settled) {
+        pos = clamp(Math.round(pos), 0, MAXP)
+        vel = 0
+        squash = 0
+        paint()
+        raf = 0
+        return
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    /* kick(n)：请求 n 帧"保底运行"。
+       ⚠️ 之所以要保底帧数，见 tick 上方那段大注释 ——
+       否则第一帧的收敛判定会在滚轮生效前就把循环掐死。 */
+    const kick = (n) => {
+      needFrames = Math.max(needFrames, n || 3)
+      if (!raf) raf = requestAnimationFrame(tick)
+    }
+
+    /* ── 滚轮：只"推速度"，不直接改位置（v14 核心改动）──────────
+       ⚠️ 这一条是本轮手感的命门：
+       旧版 `target += amt` 是**位置驱动** —— 每个事件直接决定"停在哪"，
+       所以无论滚多快，结果都是"一格一格挪"，没有加速度、没有惯性。
+       新版 `vel += amt * KICK` 是**速度驱动** —— 事件只推一把，
+       连滚时 vel 累积（加速），停手后摩擦衰减（减速滑行）。
+       这才是"有惯性"的物理来源。 */
+    /* ⚠️ 这里原来有一行 `if (now - lastWheelT > GESTURE_GAP) residue = 0`，
+       而 `const GESTURE_GAP = 240` 在改版时被删掉了 —— 常量没了引用还在，
+       wheel 回调**第一行就抛 ReferenceError**，于是「滚轮完全滚不动」。
+       2026-09-27 已删掉那行：碎 delta 累积（residue）本来就不需要手势间隔清零 ——
+       一次滚动结束，residue 自然被消费回 0（见下方 `residue = 0`），
+       两个手势之间的时间间隔并不影响折算，留着只是隐患。 */
+    let residue = 0
+    /* ── 到端点的「撞一次 → 放行」计数（v15 定稿，2026-09-27）────────
+       这一处**前后改了三版**，把三版的错都记下来，别再走回去：
+
+       ── 第 1 版 `pushedAtEnd` + GESTURE_GAP 复位
+          错在：复位条件是"两次 wheel 间隔 > 240ms"。
+          慢滚（一格隔 300ms+）每次都算"新手势" → 永远 `不到 1` → 永不放行。
+          症状：慢悠悠滚到头，再怎么滚页面都不动，像卡死。
+
+       ── 第 2 版 `wallT` + COOLDOWN(420ms) 时间窗
+          错在：手速只要"比 420ms 慢一点点"（真人常是 400ms 左右），
+          每次推都刚好落在窗口外 → 被当成"新一次撞击" → 反复撞。
+          症状：**到头再滚会抖**（站长原话），squash 反复卡在 0.348，
+          pos 在 −0.038 来回，且 scrollY 永远是 0（不放行）。实测复现：
+          推1 -0.0384 / 推2 -0.0345 / 推3 -0.0348 / 推5 -0.0384。
+
+       ── 第 3 版（本版）纯计数 + 逃逸
+         核心认识：**判据不能用时间**。
+         真人推滚轮的间隔（约 400ms）恰好横跨一切"合理"的时间窗，
+         用时间必然会误判。改成**纯计数**：
+           同一个方向、连续推到第 ESCAPE_N 次还没离开端点 → 放行给页面。
+         好处：慢滚快滚都一致，不受手速影响，没有时间刺客。
+         离开端点（往界内滚）→ 计数清零，下次到边重新开始。
+
+       ⚠️ 2026-09-27 补记：这一版原本在开头还留了一句
+          `if (now - lastWheelT > GESTURE_GAP) residue = 0`（第 1 版的遗物），
+          而常量 GESTURE_GAP 早已被删 —— 结果 wheel 回调**第一行就 ReferenceError**，
+          表现为「滚轮完全滚不动」。已整段删除，见下方状态声明处的注释。 */
+    let wallDir = 0        // 已拉过的方向：-1 头 / 1 尾 / 0 没拉过
+    let wallPushes = 0     // 同一方向连续推了几次（用于"逃逸"，见滚轮回调）
+    const ESCAPE_N = 4     // 连推这么多次还没离开端点 → 放行给页面（别把人困住）
+    on(stage, 'wheel', (e) => {
+      /* 归一化 deltaMode：Firefox 用「行」(1)，部分环境用「页」(2)，Chrome 是像素(0)。
+         不归一化的话 Firefox 上一格只有 deltaY≈3，滚半天不动一格。 */
+      const mult = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? (stage.clientWidth || 800) : 1
+      const rx = e.deltaX * mult
+      const ry = e.deltaY * mult
+      const rdx = Math.abs(rx) > Math.abs(ry) ? rx : ry // 横竖谁大听谁的
+
+      /* ⚠️ 容差取 0.02 卡位（≈4.6px），不是 0.001：
+         弹簧+吸附收敛后可能停在离整卡位一两个像素的地方，
+         用 0.001 会判不出"已到头"，于是既不撞墙也不放行（P9 实测踩过）。 */
+      const atHead = rdx < 0 && pos <= 0.02
+      const atTail = rdx > 0 && pos >= MAXP - 0.02
+      const atEnd = atHead || atTail
+      if (atEnd) {
+        const dir = rdx < 0 ? -1 : 1
+        /* ⚠️ 到头的处理，最终定稿（2026-09-27，站长要"橡皮筋"）：
+           站点**不再**做"撞一次就放行给页面"。理由：站长要的是
+           「拉到头再拉，像橡皮筋被拽住、松手弹回去」—— 那就该**一直拽着**，
+           中途放行给页面会把"拽"的感觉打断。
+
+           于是这里只有一件事：给一个**被阻尼的**朝外速度。
+              · 刚到头（over≈0）→ 给得足，能明显拉出去一段；
+              · 已经拉出很远 → 越给越少（rubber），"越拉越拉不动"。
+           松手后由 tick 里的 spring 欠阻尼弹回（有 overshoot）。
+
+           ⚠️ 那"万一读者就是想把页面滚下去呢？"—— 给一条**逃逸**：
+              同一方向连推到第 ESCAPE_N 次（还没离开过端点）就放行给页面。
+              这样既不打断橡皮筋手感，又不会把人困住。
+              （第 1/2 版栽在"判据用时间/手势"，这版用**纯计数**，不会误判。） */
+        if (dir === wallDir) {
+          wallPushes++
+          if (wallPushes >= ESCAPE_N) {
+            /* 逃逸：摘掉 Lenis 的"别管我"标记，交还页面顺滑滚动。
+               ⚠️ 必须摘属性而不是只 return：带着它 Lenis 会无视这次 wheel。 */
+            if (stage.hasAttribute('data-lenis-prevent-wheel')) {
+              stage.removeAttribute('data-lenis-prevent-wheel')
+            }
+            return
+          }
+        } else {
+          wallDir = dir
+          wallPushes = 0
+        }
+        /* 消费 + 橡皮筋推进 */
+        e.preventDefault()
+        e.stopPropagation()
+        stage.setAttribute('data-lenis-prevent-wheel', '')
+        const out = rdx * STRIP.KICK * 2.2
+        vel = clamp(vel + rubber(out, -dir), -STRIP.MAX_VEL, STRIP.MAX_VEL)
+        kick(5)
+        return
+      }
+      /* 离开端点（往界内方向滚）→ 清空"已撞过"的记账，
+         这样下次再到边时会重新给一次完整的橡皮筋手感。 */
+      wallDir = 0
+      wallPushes = 0
+      /* ⚠️ 消费掉：stopPropagation 是**必须**的 ——
+         preventDefault 只挡浏览器的默认滚动，**挡不住 JS 监听器**。
+         Lenis 在 window 上收 wheel，只 preventDefault 它照常把页面滑走。 */
+      e.preventDefault()
+      e.stopPropagation()
+      stage.setAttribute('data-lenis-prevent-wheel', '') // 见上方：放行时摘过，这里挂回去
+
+      residue += rdx
+      /* 位移累积制：触控板那种 0.5px 的碎 delta 也**一律消费**（不漏给页面），
+         但累够 1px 再折算成速度，避免碎 delta 触发无用帧。 */
+      if (Math.abs(residue) < 1) return
+      const px = residue
+      residue = 0
+      const add = px * STRIP.KICK
+      vel = clamp(vel + add, -STRIP.MAX_VEL, STRIP.MAX_VEL)
+      kick(4) // 保底 4 帧（见 tick 的坑注释）
+    }, { passive: false })
+
+    /* ── 程序化移动：点卡 / 键盘 / 聚焦 共用 ──────────────────
+       v14：不能直接改 pos（那样没有惯性，是硬跳）。
+       做法：**给一个速度**，让同一个摩擦循环把它带过去 ——
+       于是"点击滑到居中"和"滚轮滑到居中"手感完全一致。
+       速度按距离换算，并留出一点余量（0.06 卡）防浮点不收敛。 */
+    const moveTo = (i) => {
+      const to = clamp(i, 0, MAXP)
+      const d = to - pos
+      if (Math.abs(d) < 0.002) { pos = to; return }
+      /* v = 距离 / 时间常数。
+         位移 = v/(1−FRICTION) = v/0.10 = 10v 卡位，要走到距离 d → v = d/10。
+         所以系数 = 1/10 × 一点余量。这样"点卡居中"与"滚轮滑过去"
+         走的是同一套摩擦曲线，手感一致。
+         ⚠️ 不能用大系数硬怼 MAX_VEL：那样会先顶到上限再匀速，
+            加速段和匀速段手感割裂（旧版就是这么抖的）。 */
+      vel = clamp(d * 0.1, -STRIP.MAX_VEL, STRIP.MAX_VEL)
+      kick(6) // 保底 6 帧，确保位移真的起步（见 tick 的坑注释）
+    }
+
+    /* ── 点击卡片 → 滑到居中，**不跳转** ────────────────────
+       v14：所有卡平等，不再有"中心卡"的特权，
+       所以规则简化成：**点哪张哪张就居中**；已在居中的再点一次才真的进系列页。 */
+    on(stage, 'click', (e) => {
+      let card = e.target && e.target.closest ? e.target.closest('.fm-series-card') : null
+      if (!card && typeof e.clientX === 'number') { // 兜底：按坐标反查实际渲染矩形
+        for (const el of cards) {
+          const r = el.getBoundingClientRect()
+          if (r.width && e.clientX >= r.left && e.clientX <= r.right &&
+              e.clientY >= r.top && e.clientY <= r.bottom) { card = el; break }
+        }
+      }
+      if (!card) return
+      const i = cards.indexOf(card)
+      if (i < 0) return
+      const d = i - clamp(pos, 0, MAXP)
+      if (Math.abs(d) > 0.06) {
+        e.preventDefault()
+        e.stopPropagation()
+        moveTo(i) // 滑过去；已在中间再点一次才真的进系列页
+        return
+      }
+    }, { capture: true })
+
+    /* ── 触屏：手指滑 + 甩出的惯性 ─────────────────────────
+       v14：与滚轮共用同一个 vel 状态机 —— 手指拖动时**直接写 pos**（跟手），
+       松手时把手指速度交给 vel，剩下的滑行/吸附/回弹全由 tick 接管。
+       ⚠️ 注意这里是**拖动**，不是滚轮：拖动必须 1:1 跟手，不能走积分。 */
+    let downX = 0, downPos = 0, lastX = 0, lastT = 0, touchVel = 0, armed = false, dragged = false
+    on(stage, 'pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return // 桌面不做鼠标按住拖（站长否掉）
+      armed = true; dragged = false
+      downX = lastX = e.clientX; downPos = pos; lastT = e.timeStamp; touchVel = 0
+      vel = 0
+      dragging = true
+      if (raf) { cancelAnimationFrame(raf); raf = 0 }
+      if (stage.setPointerCapture) stage.setPointerCapture(e.pointerId)
+    })
+    on(stage, 'pointermove', (e) => {
+      if (!armed) return
+      const dx = e.clientX - downX
+      if (!dragged && Math.abs(dx) < 4) return
+      dragged = true
+      const dt = Math.max(1, e.timeStamp - lastT)
+      /* 手指速度（卡/帧），带一点平滑 —— 用**局部**变量，
+         不要污染 vel（vel 是给 tick 用的，拖动期间 tick 不跑）。 */
+      touchVel += (((e.clientX - lastX) / dt) * 16 / step - touchVel) * 0.4
+      lastX = e.clientX; lastT = e.timeStamp
+      pos = downPos - dx / step  // 1:1 跟手
+      paint()
+      if (e.cancelable) e.preventDefault()
+    }, { passive: false })
+    const release = () => {
+      if (!armed) return
+      armed = false
+      dragging = false
+      if (!dragged) return
+      dragged = false
+      /* 松手 → 把手指速度交给主循环（惯性甩出），方向和滚轮一致：
+         手指左滑（ dx<0 ）应该让内容继续左移 = 位置增大 = 速度取正。 */
+      vel = clamp(-touchVel, -STRIP.MAX_VEL, STRIP.MAX_VEL)
+      if (Math.abs(vel) < 0.004) {
+        /* 几乎没速度 → 直接吸附到最近卡位（也走 moveTo 的"给速度"路径） */
+        moveTo(Math.round(pos))
+      } else {
+        kick(8) // 甩出：保底多跑几帧，惯性才看得见
+      }
+    }
+    on(stage, 'pointerup', release)
+    on(stage, 'pointercancel', release)
+    on(stage, 'dragstart', (e) => e.preventDefault())
+
+    /* ── 键盘 ───────────────────────────────────────────── */
+    on(stage, 'keydown', (e) => {
+      const t = Math.round(clamp(pos, 0, MAXP))
+      if (e.key === 'ArrowRight') moveTo(t + 1)
+      else if (e.key === 'ArrowLeft') moveTo(t - 1)
+      else if (e.key === 'Home') moveTo(0)
+      else if (e.key === 'End') moveTo(MAXP)
+      else return
+      e.preventDefault()
+    })
+    on(stage, 'focusin', (e) => { // Tab 聚焦也居中（读屏/键盘用户）
+      const card = e.target && e.target.closest ? e.target.closest('.fm-series-card') : null
+      if (!card) return
+      const i = cards.indexOf(card)
+      if (i >= 0 && Math.abs(i - pos) > 0.002) moveTo(i)
+    })
+
+    let ro = null
+    if (typeof ResizeObserver !== 'undefined') {
+      let lastW = 0
+      ro = new ResizeObserver(() => {
+        const W = stage.clientWidth || 1
+        if (W === lastW) return
+        lastW = W
+        layout(); paint()
+      })
+      ro.observe(stage)
+    }
+    stage.__fmStrip = {
+      layout,
+      paint,
+      /* 只读的物理状态快照 —— 排查"手感不对"时唯一的观察窗。
+         没有它，所有状态都关在闭包里，只能靠截图猜（2026-09-27 踩过：
+         一度以为撞墙没反弹，其实是读不到 pos，只能看到 tx 这个无关量）。 */
+      debug: () => ({ pos, vel, squash, raf, needFrames, wallDir, wallPushes, dragging, step, cardW, N }),
+      dispose() {
+        try { ac.abort() } catch (_) {}
+        if (ro) ro.disconnect()
+        if (raf) cancelAnimationFrame(raf)
+        raf = 0
+      }
+    }
+    layout()
+    paint()
+    stage.classList.add('is-ready')
+  }
+
+  const arm = () => document.querySelectorAll('.fm-series-stage').forEach(bind)
+  arm()
+  window.addEventListener('resize', () => {
+    document.querySelectorAll('.fm-series-stage').forEach((s) => {
+      if (s.__fmStrip) { s.__fmStrip.layout(); s.__fmStrip.paint() }
+    })
+  }, { passive: true, signal: gac.signal })
   return arm
 }
 
@@ -2001,7 +2744,7 @@ export default {
     // ⚠️ 必须在 window 守卫之后：它一上来就查 .fm-mq-row，
     // SSR 阶段没有 document，否则 build 报 "document is not defined"
     setupMarqueeTouch()
-
+    const rebindSeriesStrip = setupSeriesStrip()
     // Lenis 顺滑滚动（站长 2026-09-19 点名要的效果；vendored 于 lenis@1.3.26，33KB ESM）。
     // - reduced-motion 不启用；触屏默认原生滚动（Lenis 的 syncTouch 默认 false）
     // - SPA 切页后 VitePress 会 native scrollTo(0)，Lenis 的内部状态必须 immediate 同步，
@@ -2064,6 +2807,8 @@ export default {
            但新首页的 DOM 可能此刻尚未提交完，交给下一帧更稳。 */
         if (playPoemRise) requestAnimationFrame(() => playPoemRise())
         requestAnimationFrame(() => rebindHero && rebindHero())
+        // SPA 切回首页时首页 DOM 重建，横滑带的 dataset.stripBound 随之消失，必须重绑
+        requestAnimationFrame(() => rebindSeriesStrip && rebindSeriesStrip())
       }
     }
     arm()
@@ -2073,5 +2818,20 @@ export default {
        找不到就重试，重试耗尽才判定为非首页并标 done 保持可见，
        所以不会把诗句锁死成隐形。 */
     if (playPoemRise) requestAnimationFrame(() => playPoemRise())
+    /* 同理：首屏硬加载时横滑带的圆钮/居中放大也要绑一次。
+       enhanceApp 早于首页组件挂载，此刻 .fm-series-stage 可能还不存在 ——
+       所以这里做**多帧重试**（最多 12 帧 ≈ 200ms），一旦找到就绑上；
+       bind 内部有 dataset.stripBound 守卫，重复调用无害。
+       ⚠️ 2026-09-26：不加这段时，直接刷新首页进站（不经 SPA 切页）会
+       出现"圆钮点了没反应"—— 只有从文章页切回首页才绑得上。 */
+    if (rebindSeriesStrip) {
+      let tries = 0
+      const armStrip = () => {
+        rebindSeriesStrip()
+        const bound = document.querySelector('.fm-series-stage[data-strip-bound]')
+        if (!bound && ++tries < 12) requestAnimationFrame(armStrip)
+      }
+      requestAnimationFrame(armStrip)
+    }
   }
 }

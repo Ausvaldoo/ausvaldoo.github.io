@@ -219,7 +219,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
 .idx-count {
   margin: 8px 0 26px;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.04em;
   color: var(--vp-c-text-3);
 }
@@ -237,7 +237,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   gap: 6px;
   padding: 3px 10px 4px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-label);
   line-height: 1.5;
   color: var(--vp-c-text-2);
   text-decoration: none;
@@ -254,7 +254,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   border-color: var(--rust);
 }
 .idx-chip-n {
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   color: var(--vp-c-text-3);
   font-variant-numeric: tabular-nums;
 }
@@ -264,7 +264,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   padding: 0 0 10px;
   border-bottom: 1px solid var(--vp-c-text-1);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--fs-small);
   font-weight: 600;
   letter-spacing: 0.22em;
   color: var(--rust);
@@ -280,14 +280,14 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   padding: 0;
   border: none;
   font-family: var(--font-serif);
-  font-size: 17px;
+  font-size: var(--fs-h4);
   font-weight: 700;
   color: var(--vp-c-text-1);
   scroll-margin-top: 80px;
 }
 .idx-n {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 400;
   color: var(--vp-c-text-3);
   font-variant-numeric: tabular-nums;
@@ -310,12 +310,12 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
 .idx-date {
   flex: none;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-label);
   color: var(--vp-c-text-3);
   font-variant-numeric: tabular-nums;
 }
 .idx-list a {
-  font-size: 15px;
+  font-size: var(--fs-body);
   line-height: 1.6;
   color: var(--vp-c-text-1);
   text-decoration: none;
@@ -406,13 +406,13 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
 }
 .tr-name {
   font-family: var(--font-serif);
-  font-size: 16px;
+  font-size: var(--fs-h4);
   font-weight: 700;
   color: var(--vp-c-text-1);
 }
 .tr-n {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   color: var(--vp-c-text-3);
   font-variant-numeric: tabular-nums;
 }
@@ -446,7 +446,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 0 36px;
-  font-size: 13px;
+  font-size: var(--fs-small);
   color: var(--vp-c-text-2);
 }
 .tr-list li {
@@ -461,7 +461,7 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', readHash))
   min-width: 1.7em;
   text-align: right;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   color: var(--vp-c-text-3);
   font-variant-numeric: tabular-nums;
 }

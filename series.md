@@ -55,7 +55,7 @@ const shared = posts.length - articleCount
 .ser-count {
   margin: 8px 0 26px;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.04em;
   color: var(--vp-c-text-3);
 }
@@ -72,14 +72,14 @@ const shared = posts.length - articleCount
   border-bottom: 1px solid var(--vp-c-text-1);
   border-top: none;
   font-family: var(--font-serif);
-  font-size: 17px;
+  font-size: var(--fs-h4);
   font-weight: 700;
   color: var(--vp-c-text-1);
   scroll-margin-top: 80px;
 }
 .ser-n {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 400;
   color: var(--vp-c-text-3);
   font-variant-numeric: tabular-nums;
@@ -108,12 +108,12 @@ const shared = posts.length - articleCount
   width: 1.6em;
   text-align: right;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-label);
   color: var(--vp-c-brand-1);
   font-variant-numeric: tabular-nums;
 }
 .ser-list a {
-  font-size: 15px;
+  font-size: var(--fs-body);
   line-height: 1.6;
   color: var(--vp-c-text-1);
   text-decoration: none;
@@ -130,7 +130,7 @@ const shared = posts.length - articleCount
 .ser-empty {
   margin-top: 30px;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.04em;
   color: var(--vp-c-text-3);
 }

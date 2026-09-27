@@ -1,12 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Hexo _posts -> VitePress posts/ 迁移脚本
+"""Hexo _posts -> VitePress posts/ 迁移脚本（一次性，已完成使命）
+
 - front matter: 删除 abbrlink 行，其余（title/tags/categories/description/date）原样保留
 - 文件名 slug: 去掉全角标点（：""？等），保留「日期-标题」语义化结构
+
+⚠️ 2026-09-25：Hexo 旧站 `E:\\Git_Repos\\blog\\` 已按站长要求整体删除。
+   SRC 现指向归档副本（32 篇源文件完整，字节数与原件一致）：
+   `E:\\Git_Repos\\blog-vitepress\\_ws\\_archive-hexo-blog-20260925\\source\\_posts`
+   重新跑这个脚本会**覆盖** DST 下的同名文件，正常情况下不需要再跑。
+   ⚠️ 注意：归档里含《2021-12-05 毛主席谈他为什么要接见红卫兵》——
+   这篇是站长**故意删除**的（见 AGENTS.md「回填日期」一条），跑脚本会把它带回来。
 """
 import os
 import re
 
-SRC = r'E:\Git_Repos\blog\source\_posts'
+SRC = r'E:\Git_Repos\blog-vitepress\_ws\_archive-hexo-blog-20260925\source\_posts'
 DST = r'E:\Git_Repos\blog-vitepress\posts'
 
 

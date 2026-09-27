@@ -34,7 +34,7 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
 .archive-count {
   margin: 8px 0 32px;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.04em;
   color: var(--vp-c-text-3);
 }
@@ -46,7 +46,7 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
   padding: 0;
   border: none;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--fs-small);
   font-weight: 600;
   letter-spacing: 0.22em;
   color: var(--rust);
@@ -74,7 +74,7 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
   flex: none;
   width: 46px;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--fs-label);
   color: var(--vp-c-text-3);
   font-variant-numeric: tabular-nums;
 }
@@ -82,7 +82,7 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
   flex: none;
   max-width: 100%;
   font-family: var(--font-serif);
-  font-size: 16px;
+  font-size: var(--fs-h4);
   font-weight: 600;
   line-height: 1.55;
   color: var(--vp-c-text-1);
@@ -96,7 +96,7 @@ const years = Object.keys(groups).sort((a, b) => Number(b) - Number(a))
 }
 .archive-cat {
   flex: none;
-  font-size: 12px;
+  font-size: var(--fs-label);
   color: var(--vp-c-brand-1);
   text-decoration: none;
 }

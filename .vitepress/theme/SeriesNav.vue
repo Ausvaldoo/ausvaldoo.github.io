@@ -86,7 +86,7 @@ const shortTitle = (t, n) => {
   padding-left: 13px;
   border-left: 2px solid var(--rust);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-label);
   letter-spacing: 0.04em;
 }
 
@@ -120,7 +120,7 @@ const shortTitle = (t, n) => {
   padding: 1px 6px 2px;
   background: var(--rust);
   color: var(--paper);
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   border-radius: 2px;
 }
 
@@ -137,7 +137,7 @@ const shortTitle = (t, n) => {
   margin-left: auto;
   flex: none;
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--fs-micro);
 }
 .sn-more::after {
   content: ' ▾';
@@ -166,7 +166,7 @@ const shortTitle = (t, n) => {
   padding: 6px 0;
   color: var(--ink-soft);
   text-decoration: none;
-  font-size: 12px;
+  font-size: var(--fs-label);
   line-height: 1.7;
   transition: color 0.2s ease;
 }
@@ -182,7 +182,7 @@ const shortTitle = (t, n) => {
 .sn-t {
   font-family: var(--font-serif);
   letter-spacing: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-small);
 }
 /* 当前在读的那篇：整行变成强调色，并加粗 —— 读者一眼知道自己在第几篇 */
 .sn-list a.is-current {

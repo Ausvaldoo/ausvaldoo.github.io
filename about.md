@@ -271,7 +271,7 @@ onBeforeUnmount(() => {
   padding: 0;
   border: none;
   font-family: var(--font-serif);
-  font-size: 30px;
+  font-size: var(--fs-h2);
   font-weight: 800;
   line-height: 1.25;
   letter-spacing: -0.01em;
@@ -280,7 +280,7 @@ onBeforeUnmount(() => {
 .poem-en {
   margin: 7px 0 0;
   font-family: var(--font-serif);
-  font-size: 15px;
+  font-size: var(--fs-body);
   font-weight: 600;
   font-style: italic;
   line-height: 1.5;
@@ -290,7 +290,7 @@ onBeforeUnmount(() => {
 .poem-by {
   margin: 6px 0 0;
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.16em;
   color: var(--vp-c-text-3);
 }
@@ -312,7 +312,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.22em;
   color: var(--rust);
 }
@@ -325,17 +325,25 @@ onBeforeUnmount(() => {
 .pl-zh {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: 17px;
+  font-size: var(--fs-h4);
   line-height: 1.75;
   color: var(--vp-c-text-1);
 }
 .pl-en {
   margin: 1px 0 0;
   font-family: var(--font-mono);
+  /* ⚠️ 这里**故意不**用 --fs-small(13px)，保持原样的 12px ——
+     2026-09-27 站长反馈："正文里的英文没人看，就是个装饰"。
+     装饰不该跟着**内容字号阶梯**走（阶梯是给"要读的字"立的），
+     所以这一处是**有意的例外**，别在下轮收敛时又把它拉回 13px。 */
   font-size: 12px;
   line-height: 1.6;
   letter-spacing: 0.01em;
-  color: var(--vp-c-text-3);
+  /* ⚠️ 颜色写固定淡值，**不**用 --vp-c-text-3：
+     该变量指向 --ink-faint，本轮为修对比度把它从 #969188 加深到 #5e5950，
+     装饰英文跟着变深就会"跳出来"干扰正文（站长原话："英文…会干扰"）。
+     装饰要退到背景里，所以它不属于"三级文字"那套信息层级。 */
+  color: #a8a39a;
 }
 
 @media (max-width: 720px) {
@@ -343,16 +351,21 @@ onBeforeUnmount(() => {
     max-width: 100%;
   }
   .poem-zh {
-    font-size: 25px;
+    font-size: var(--fs-h2);
   }
   .poem-en {
-    font-size: 14px;
+    font-size: var(--fs-body);
   }
   .pl-zh {
-    font-size: 16px;
+    font-size: var(--fs-h4);
   }
   .pl-en {
-    font-size: 11.5px;
+    /* ⚠️ 窄屏**不要**跟着放大（2026-09-27 修）：
+       这里原来写的是 `font-size: var(--fs-small)` = 13px，
+       而基础规则是 12px —— 等于窄屏反而把装饰英文**放大**，
+       和其他元素（都往小收）方向相反，也违背"装饰该退到背景"的定位。
+       装饰英文在任何屏宽都保持 12px 不变。 */
+    font-size: 12px;
   }
 }
 </style>

@@ -78,7 +78,7 @@ const multi = computed(() => blocks.value.length > 1)
   padding-top: 18px;
   border-top: 1px solid var(--vp-c-divider);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-label);
   letter-spacing: 0.04em;
 }
 
@@ -105,7 +105,7 @@ const multi = computed(() => blocks.value.length > 1)
   padding: 1px 6px 2px;
   background: var(--rust);
   color: var(--paper);
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   border-radius: 2px;
 }
 .sp-name {
@@ -131,7 +131,7 @@ const multi = computed(() => blocks.value.length > 1)
 
 .sp-dir {
   flex: none;
-  font-size: 11px;
+  font-size: var(--fs-micro);
   color: var(--ink-faint);
   transition: color 0.2s ease;
 }
@@ -143,7 +143,7 @@ const multi = computed(() => blocks.value.length > 1)
    否则上下篇会把正文末尾撑得很高 */
 .sp-title {
   font-family: var(--font-serif);
-  font-size: 14px;
+  font-size: var(--fs-h4);
   letter-spacing: 0;
   line-height: 1.6;
   display: -webkit-box;
@@ -157,7 +157,7 @@ const multi = computed(() => blocks.value.length > 1)
   flex: none;
   align-self: flex-start;
   padding-top: 2px;
-  font-size: 11px;
+  font-size: var(--fs-micro);
   color: var(--ink-faint);
 }
 .sp-edge.is-fin {
