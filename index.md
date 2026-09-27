@@ -141,6 +141,14 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
       </a>
     </div>
   </div>
+  <!-- 移动端专用：单行全量标签（桌面隐藏）。窄屏显示，原生横向滚动，含全部 {{ tagCount }} 个标签 -->
+  <div v-if="mqTracks[0].length" class="fm-mq-row is-m" aria-hidden="false">
+    <div class="fm-mq-track">
+      <a v-for="(t, i) in tagEntries" :key="'m' + i" class="fm-mq-tag" data-copy="0" :href="`/tags#tag-${t[0]}`">
+        {{ t[0] }}<sup>{{ t[1] }}</sup>
+      </a>
+    </div>
+  </div>
 </section>
 
 <!-- ④ 封底：站长的签名（兰波） -->
@@ -485,6 +493,8 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
     transparent, #000 var(--mq-fade-l),
     #000 calc(100% - var(--mq-fade-r)), transparent);
 }
+/* 移动端专用单行（is-m）：桌面不渲染，窄屏才显示 */
+.fm-mq-row.is-m { display: none; }
 .fm-mq-track {
   display: inline-flex;
   gap: 14px;
@@ -595,9 +605,13 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
        scrollLeft 是唯一的位置真相 → 滚到哪停哪，永远能滑回来；
        再配 scroll-snap 让它停在词与词之间，手感干净。
      桌面端不受影响（那里靠 :hover 暂停 + 鼠标滚轮，没有这个问题）。 */
+  /* 桌面三行错速词带在窄屏会织成密网、每行只露 3-4 词 → 整组隐藏，
+     改由 .is-m 单行全量承载（含全部 {{ tagCount }} 个标签）。 */
+  .fm-mq-row.is-0,
   .fm-mq-row.is-1,
   .fm-mq-row.is-2 { display: none; }
-  .fm-mq-row.is-0 {
+  .fm-mq-row.is-m {
+    display: block;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
@@ -605,23 +619,16 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
     touch-action: pan-x;
     overscroll-behavior-x: contain;
   }
-  .fm-mq-row.is-0::-webkit-scrollbar { display: none; }
-  /* ⚠️ 关键一条：**关掉自动滚动动画**。
-     没有它，手指滑出的 scrollLeft 会和动画的 transform 叠加，词带会飞走。 */
-  .fm-mq-row.is-0 .fm-mq-track {
+  .fm-mq-row.is-m::-webkit-scrollbar { display: none; }
+  /* 移动端关掉桌面动画，只留原生横向滚动（否则 scrollLeft 与 transform 叠加会飞走） */
+  .fm-mq-row.is-m .fm-mq-track {
     animation: none;
   }
-  /* 关掉动画后 track 不再需要"重复多份做无缝循环"。
-     HTML 层为了桌面的无缝动画把每行重复了 6 遍（内容 ×6），
-     移动端既没动画、又要手滑，留着 6 份就是让读者白滑 5000px 还看 6 遍同样的词。
-     所以：**移动端只留第 1 份**（data-copy === 0）。 */
-  .fm-mq-row.is-0 .fm-mq-tag:not([data-copy="0"]) {
-    display: none;
-  }
-  .fm-mq-row.is-0 {
+  /* 原生滚动 + 边缘渐隐由 setupMarqueeTouch 按 scrollLeft 动态收放 */
+  .fm-mq-row.is-m {
     scroll-snap-type: x proximity;
   }
-  .fm-mq-row.is-0 .fm-mq-tag {
+  .fm-mq-row.is-m .fm-mq-tag {
     scroll-snap-align: start;
   }
 }

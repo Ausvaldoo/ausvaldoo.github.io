@@ -1965,7 +1965,7 @@ function setupHeroFly() {
  *     贴左端 → 左侧渐隐归 0；贴右端 → 右侧渐隐归 0；中间 → 两侧都恢复 7%。
  */
 function setupMarqueeTouch() {
-  const rows = () => Array.from(document.querySelectorAll('.fm-mq-row.is-0'))
+  const rows = () => Array.from(document.querySelectorAll('.fm-mq-row.is-0, .fm-mq-row.is-m'))
   const EDGE_SLOP = 2   // 判定"贴边"的容差（px）：滚动有亚像素，不能要求严格 === 0
   const updateFade = (row) => {
     const max = row.scrollWidth - row.clientWidth
@@ -1997,7 +1997,7 @@ function setupMarqueeTouch() {
   }
   const arm = () => {
     /* ⚠️ 桌面端不要碰：桌面是动画位移，两侧渐隐永远成立。
-       这里只处理窄屏真正可滚的那一行（.is-0 在窄屏可见、在桌面也可滚）。
+       这里只处理窄屏真正可滚的行：桌面/窄屏通用的 .is-0，以及移动端专用单行 .is-m。
        判断"是否真的可滚"由 updateFade 内部按 scrollWidth 决定，天然安全。 */
     rows().forEach(bind)
   }
@@ -2010,7 +2010,7 @@ function setupMarqueeTouch() {
   let tries = 0
   const armRetry = () => {
     arm()
-    if (!document.querySelector('.fm-mq-row.is-0[data-touch-bound]') && ++tries < 20) {
+    if (!document.querySelector('.fm-mq-row.is-0[data-touch-bound], .fm-mq-row.is-m[data-touch-bound]') && ++tries < 20) {
       requestAnimationFrame(armRetry)
     }
   }
@@ -2412,15 +2412,19 @@ function setupSeriesStrip() {
       if (overNow) spring()
 
       if (!dragging && !overNow) {
-        /* 吸附：速度几乎停、且**不在越界中**才吸到整卡位。 */
-        if (Math.abs(vel) < 0.004) {
-          const snapped = Math.round(pos)
-          const dd = snapped - pos
+        /* 中段：自由停，**不再吸附到整卡位**（站长 2026-09-27：要"停到哪里就是哪里"）。
+           只在紧贴左/右端点时轻推回边界 —— 这是橡皮筋回弹的收口，
+           顺便保证边缘渐隐变实（data-edge: head / tail）。 */
+        const atHead = pos < 0.12
+        const atTail = pos > MAXP - 0.12
+        if (atHead || atTail) {
+          const target = atHead ? 0 : MAXP
+          const dd = target - pos
           if (Math.abs(dd) > 0.0006) {
-            pos += dd * 0.22              // 缓入缓出的尾巴（Slow Out）
+            pos += dd * 0.22              // 收口尾巴（Slow Out），仅端点附近
             active = true
           } else {
-            pos = snapped
+            pos = target
             vel = 0
           }
         }
@@ -2438,10 +2442,9 @@ function setupSeriesStrip() {
       /* 收敛判定：速度没了、没在越界、挤压也归零 → 停帧。
          ⚠️ 只有 needFrames 归零后才允许判定（见上方大注释）。 */
       const settled =
-        !active && !dragging && vel === 0 && squash === 0 &&
-        Math.abs(pos - Math.round(pos)) < 0.0006
+        !active && !dragging && vel === 0 && squash === 0
       if (settled) {
-        pos = clamp(Math.round(pos), 0, MAXP)
+        pos = clamp(pos, 0, MAXP)   // 中段保留分数位（自由停），不取整
         vel = 0
         squash = 0
         paint()
@@ -2657,12 +2660,9 @@ function setupSeriesStrip() {
       /* 松手 → 把手指速度交给主循环（惯性甩出），方向和滚轮一致：
          手指左滑（ dx<0 ）应该让内容继续左移 = 位置增大 = 速度取正。 */
       vel = clamp(-touchVel, -STRIP.MAX_VEL, STRIP.MAX_VEL)
-      if (Math.abs(vel) < 0.004) {
-        /* 几乎没速度 → 直接吸附到最近卡位（也走 moveTo 的"给速度"路径） */
-        moveTo(Math.round(pos))
-      } else {
-        kick(8) // 甩出：保底多跑几帧，惯性才看得见
-      }
+      /* 松手即交给摩擦循环：有速度就惯性甩出，没速度就原地停。
+         不再吸附到整卡位（站长 2026-09-27：停到哪里就是哪里）。 */
+      kick(8)
     }
     on(stage, 'pointerup', release)
     on(stage, 'pointercancel', release)
