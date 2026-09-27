@@ -1,7 +1,6 @@
 import DefaultTheme from 'vitepress/theme'
 import MyLayout from './MyLayout.vue'
 import Lenis from './vendor/lenis.mjs'
-import './fonts.css'   // 自托管字体 @font-face（分片在 public/fonts/），必须在 custom.css 之前
 import './custom.css'
 
 /* 模块级状态：记录「诗句是否已经升起过」。

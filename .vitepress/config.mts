@@ -95,9 +95,16 @@ export default defineConfig({
     ['meta', { name: 'theme-color', content: '#f6f1e6' }],
     ['meta', { name: 'author', content: '牧神' }],
     ['link', { rel: 'icon', type: 'image/jpeg', href: '/zhihu_avatar.jpg' }],
-    // 衬线字体已改为自托管（见 .vitepress/theme/fonts.css，分片在 public/fonts/）。
-    // 不再依赖 fonts.loli.net / gstatic.loli.net 等第三方镜像 —— 它们一旦被墙或改路径，
-    // 全站标题字会静默退回系统衬线体。自托管后字体随站点一起发布，天生可用。
+    // 衬线字体（Google Fonts 国内镜像），Playfair 用于西文刊名、Noto Serif SC 用于中文标题
+    ['link', { rel: 'preconnect', href: 'https://fonts.loli.net' }],
+    ['link', { rel: 'preconnect', href: 'https://gstatic.loli.net', crossorigin: '' }],
+    [
+      'link',
+      {
+        rel: 'stylesheet',
+        href: 'https://fonts.loli.net/css2?family=Playfair+Display:ital,wght@0,700;1,600&family=Noto+Serif+SC:wght@600;700;900&display=swap'
+      }
+    ]
   ],
 
   sitemap: {
