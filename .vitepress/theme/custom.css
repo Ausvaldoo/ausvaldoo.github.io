@@ -588,6 +588,34 @@ html.dark body::after {
   font-weight: 700;
 }
 
+/* 文章大标题 → 正文首行：拉开呼吸（站长 2026-09-29 反馈"标题离正文太近"）。
+   ─────────────────────────────────────────────────────────────────
+   实测问题（改前，测自 /posts/2026-09-26-judicial-independence-say-no）：
+     h1 自身 margin-bottom = 0（VitePress 只给 h2 设 margin，h1 没有），
+     h1 与紧随段落的间隙 16px **全部**来自 p 的 margin-top:16px ——
+     而段间距也是 16px，于是"标题"和"正文"在用同一个间距，层级黏连。
+
+   为什么标题下要**大于**段间距：段间距表达"同一层级的停顿"，标题下间距表达
+   "换了一件事" —— 两者若相等，视觉上标题就退化成了一段普通文字。
+   取 28px（≈ 一个正文行高 27px）：
+     · 与段间距 16px 拉开 12px，层级一眼可辨；
+     · 又不到 h2 的 48px 那种"翻章"感，符合本站克制的调性（不空、不散）。
+
+   覆盖两种"标题后直接进正文"的首元素（全站实测：paragraph 19 篇 / blockquote 8 篇）：
+     · `h1 + p`          —— 普通正文开头，原间隙 16px → 28px；
+     · `h1 + blockquote` —— 引题开头（如《感觉到不对之后》），原间隙 20px（引用自带
+                            margin:20px 0）→ 28px，与段落开头**对齐成同一档呼吸**。
+   两者都按 28px 收口，视觉上"标题下"只有一种间距，不因首元素类型而跳动。
+
+   ⚠️ **不覆盖** `h1 + h2` / `h1 + h3`（本站 54 篇是这种：标题后直接接章节）——
+      VitePress 的 h2/h3 已带 margin-top:48px，再叠会把章节推得太远。
+      所以选择器必须限定为 p 与 blockquote 两种。
+   ⚠️ 用 margin 而非 padding：与全文（含 p / blockquote）统一走 margin，不破坏塌陷逻辑。 */
+.vp-doc h1 + p,
+.vp-doc h1 + blockquote {
+  margin-top: 28px;
+}
+
 /* 引文 = 杂志拉引：赭红竖线 + 衬线 */
 .vp-doc blockquote {
   border-left: 3px solid var(--rust);
