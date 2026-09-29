@@ -156,6 +156,12 @@ function setupReveal() {
  *      ⚠️ 错峰（时间先后 / 波浪）与倾斜（几何 rotate / 字是歪的）是两件事，别混。
  *      这是个"只删一项"的改动，别顺手把 rotateZ 也删了。
  *      详见 index.md 那份 style 块开头的说明。
+ *
+ *   ⚠️ 2026-09-30 站长第三轮调整：**曲线换 power4.out、行程 1.25s→0.9s、
+ *      位移 100%→110%**（三项一起，对齐站长认可的那个 demo 的手感）。
+ *      归因与逐点曲线对比写在 index.md 的 style 块注释里，这里不重复。
+ *      **错峰步长（--fm-word-step / --fm-line-step）一项都没动** ——
+ *      那是站长 09-21、09-23 两次明确要「更明显」的结果，不在本轮范围内。
  *   逐行版只有 4 个错峰单位（4 行 × 0.07s = 0.21s 窗口），视觉上近乎齐步走；
  *   逐词版错峰单位 ~14 个（0.03s × 13 = 0.42s 窗口），才有了「波浪」质感。
  *   这里用 CSS animation 复刻，不引 GSAP（省 60KB 依赖）。
@@ -166,7 +172,7 @@ function setupPoemRise() {
   const root = document.documentElement
 
   /* prefers-reduced-motion：**不 return**，而是直接标 done。
-     为什么不能直接 return：.fm-word > span 的基础态是 translateY(100%) + opacity:0
+     为什么不能直接 return：.fm-word > span 的基础态是 translateY(110%)
      （隐藏），CSS 的 reduce 媒体查询会覆盖成可见，但那是纯 CSS 保证；
      而 SPA 从文章页切回首页时诗句 DOM 是**新建**的，如果我们什么都不做，
      就完全依赖 CSS 媒体查询生效 —— 一旦有偏差（例如用户中途改系统设置、
@@ -2799,7 +2805,7 @@ export default {
         /* 诗句升起（2026-09-19）。
            ⚠️ 这里**故意让它有机会执行**，而不是"只在首屏调一次"：
            因为 SPA 从文章页切回首页时，首页 DOM 是**新建**的，诗句处于 CSS 初始态
-           （translateY(100%) + opacity:0）——若不处理，就是一片空白。
+           （translateY(110%)）——若不处理，就是一片空白。
            playPoemRise() 内部用**模块级 poemRisen** 判断是否已播过：
              · 首次加载 / 整页刷新 → 播升起
              · SPA 切回 → 直接落终态（不重复播，避免与 VT 横移打架）
