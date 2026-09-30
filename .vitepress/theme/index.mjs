@@ -1930,7 +1930,7 @@ function setupHeroFly() {
    *    终点是导航栏分隔线的**灰**（--vp-c-divider）—— 直接抄 targetColor 即可。
    *    如果固定成黑，线落到导航栏底部会像一道疤（导航栏自己那条线是灰的，
    *    两条深浅不同的线在同一位置重叠，反而更显眼）。 */
-  const buildRule = (color) => {
+  const buildRule = (color, width) => {
     const r = document.createElement('div')
     r.className = 'hero-fly-rule' // 只为可调试性（无样式绑定）
     r.setAttribute('aria-hidden', 'true')
@@ -1941,15 +1941,26 @@ function setupHeroFly() {
       'margin:0',
       'padding:0',
       'height:1px',
-      // ⚠️⚠️ width 必须显式给。div 是块级、又脱离了文档流且没有内容，
-      //    此时 `width:auto` 会收缩成 **0**（离线实测：不写这行，
-      //    getBoundingClientRect().width = 0），于是 scaleX 乘任何数都还是 0
-      //    —— 线飞过去**完全看不见**，但位置与透明度的读数却全都正常，
-      //    只看数字根本发现不了。这里给 1px 作基准，真实宽度全交给 scaleX。
-      'width:1px',
+      // ⚠️⚠️ width 必须显式给，且必须是**线的真实起始长度**（内容栏宽），
+      //    不是 1px。
+      //
+      //    · 为什么必须显式给：div 是块级、又脱离文档流且没有内容，
+      //      `width:auto` 会收缩成 **0**（离线实测不写这行时
+      //      getBoundingClientRect().width = 0），scaleX 乘任何数都还是 0
+      //      —— 线飞过去**完全看不见**，但位置与透明度的读数却全都正常，
+      //      只看数字根本发现不了。
+      //
+      //    · 为什么基准不能是 1px（这是站长 2026-10-01 亲自指出的：
+      //      「这个线一直是这么细吗？它应该是有一个伸缩的过程的」）：
+      //      基准 1px 时 scaleX 是乘在 1px 上的 —— 就算 scaleX 从 1 拉到 1.3，
+      //      实测宽度也只有 1.0 → 1.2px，**肉眼根本看不出"线在伸长"**，
+      //      只剩下"一根细线在平移"。完全丢掉了"线被拉长、接上导航栏"的意思。
+      //      改成基准 = 起始长度后，scaleX 才是真正的**长度倍数**
+      //      （实测 1080 → 1414，即 scaleX 1.000 → 1.309），伸长可见。
+      'width:' + width + 'px',
       'pointer-events:none',
       // ⚠️ transform-origin 必须是 left center，不能是 center center：
-      //    线的形变主要是**横向拉伸**（内容宽 → 全屏宽）。若以中心为原点，
+      //    线的形变主要是**横向拉伸**（内容栏宽 → 全屏宽）。若以中心为原点，
       //    scaleX 会让线从两端同时向外长，左端会先脱离刊名左沿、看着像漂移；
       //    以左缘为原点则左端钉死、只有右端在延伸，读起来才是「线被拉长接上导航栏」。
       'transform-origin:left center',
@@ -2129,7 +2140,10 @@ function setupHeroFly() {
         const cs = getComputedStyle(document.documentElement)
         RULE_FROM = parseColor(cs.getPropertyValue('--vp-c-text-1')) || RULE_FROM
         RULE_TO = parseColor(cs.getPropertyValue('--vp-c-divider')) || RULE_TO
-        ruleGhost = buildRule(`rgb(${RULE_FROM.join(',')})`)
+        // ⚠️ 基准宽度必须是**线的真实起始长度**（刊头盒宽，= border-bottom 的跨度），
+        //    不是 1px —— 否则 scaleX 乘在 1px 上，全程只有 1.0→1.2px 的变化，
+        //    "伸缩"完全看不见（站长 2026-10-01 指出）。详见 buildRule 的注释。
+        ruleGhost = buildRule(`rgb(${RULE_FROM.join(',')})`, Math.max(1, r.width))
         // 锁存起点：`ruleStartBottom` 是「**页面在顶部时**刊头下沿的视口坐标」。
         // ⚠️⚠️ 这个值必须是**与当前滚动位置无关的常量**，整趟飞行只用它算
         //    （见下方 lineBottom 的「方案 C」说明）。所以不能直接锁存 r.bottom：
