@@ -1055,7 +1055,51 @@ function setupNavState() {
   const update = () => {
     raf = null
     const nav = document.querySelector('.VPNav')
-    if (nav) nav.classList.toggle('is-scrolled', window.scrollY > 8)
+    if (!nav) return
+    const y = window.scrollY || window.pageYOffset || 0
+
+    /* ── 导航线（is-scrolled 的 border-bottom）什么时候才允许亮？ ──────────
+     ⚠️⚠️ 阈值不能是写死的 `y > 8`。这是站长 2026-10-01 抓到的视觉缺陷：
+        「在那根黑线飞到顶栏底部的位置之前，顶栏底部的线已经出现了」。
+        根因：`is-scrolled` 在 y>8 就亮（几乎是刚开始滚），而此刻刊头黑线的
+        替身**还在 127px 处往上飘**（要到 y≈251 才追上导航底 64px）。
+        ⇒ y ∈ (9, 251) 这 240px 里同屏两条线：
+            127px 处的近黑线 + 64px 处的浅灰线，垂直差最大 63px。
+        这是**部分遮挡**，不是叠成一条 —— 所以「让替身盖住导航线」这个
+        原假设不成立：替身在页面流里比导航线低 63px，根本盖不住它，
+        两条都露着。原先的补救是飞行期间用 `!important` 把导航线压成
+        transparent（custom.css 的 fm-rule-flying），那属于"藏"而非"接"。
+
+    ✅ 正确判据：让导航线等到**替身已经就位**那一刻再亮。
+        离线精确求解（刊头下沿 133 → 导航底 64，easeOutCubic）：
+          t* = 0.8368 → y ≈ 251px 替身**位置**追到导航底（差 <0.3px）
+          t  = 0.875  → y ≈ 262px 替身**颜色**追平（rgb(224,221,213)，
+                        与 --vp-c-divider 逐位相同）、宽度满幅 1414
+        ⇒ 取 0.875 作交接点（位置与颜色**双双**对齐，才是真正的"无缝"）。
+          此刻导航线亮起来与替身完全重合、同色，看不出接缝。
+
+    ⚠️ 阈值来自 CSS 变量 `--fm-fly-handoff-y`（在 .vitepress/theme/custom.css
+       的 :root 里定义，= TRIGGER × 0.875），**唯一真源**，不在这里写魔数：
+       TRIGGER 是可调的，写死会让它一改就失效；而 CSS 变量既能被这个
+       scroll 处理器读到，又能被 setupHeroFly 共用，两边永不失配。
+
+    ⚠️ 非首页 / 窄屏必须退回 `y > 8`：那些页没有飞行、没有替身，
+       导航线就是唯一的线，早亮才对（页面滚起来才有毛玻璃 + 分隔线）。
+       判据：页面里存不存在刊头 `.fm-masthead` 且它在宽屏可见。 */
+    const mast = document.querySelector('.fm-masthead')
+    const hasFly = !!mast && window.matchMedia('(min-width: 960px)').matches
+    let threshold = 8
+    if (hasFly) {
+      const v = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--fm-fly-handoff-y')
+      )
+      if (isFinite(v) && v > 0) threshold = v
+    }
+    // ⚠️ 带滞回：亮在 threshold，灭在 threshold − 40。
+    //    不加滞回的话，用户在交接点附近来回滚，线会一闪一闪。
+    const wasOn = nav.classList.contains('is-scrolled')
+    const on = wasOn ? y > threshold - 40 : y > threshold
+    nav.classList.toggle('is-scrolled', on)
   }
   const onScroll = () => {
     if (raf === null) raf = requestAnimationFrame(update)
@@ -1785,6 +1829,12 @@ function setupHeroFly() {
   if (typeof window === 'undefined') return
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
+  // ⚠️ TRIGGER 与「导航线何时亮」的阈值 `--fm-fly-handoff-y` 是**联动**的：
+  //    handoff = TRIGGER × HANDOFF_T，HANDOFF_T 是"替身位置与颜色双双对齐"
+  //    的进度点（离线精确求解 = 0.875）。custom.css 的 :root 里
+  //    `--fm-fly-handoff-y: 262.5px` 就是 300 × 0.875 算出来的。
+  //    ⇒ 改 TRIGGER 时必须同步改那个变量，否则导航线会早亮或晚亮。
+  //    （所以不在这里用 JS 写死阈值：setupNavState 也读同一个 CSS 变量。）
   const TRIGGER = 300 // 滚动多少 px 内完成整段飞行
   // ⚠️ 与 custom.css 里那条 html:has(.VPHero) 的守卫必须一致：只在 ≥960px 跑。
   const WIDE = window.matchMedia('(min-width: 960px)')
@@ -2158,7 +2208,9 @@ function setupHeroFly() {
         ruleStartLeft = r.left   // 横向不随滚动变，直接锁存即可
         ruleStartWidth = r.width
         // ⚠️ 替身一出现就压掉导航栏那条真线（详见 NAV_LINE_HOLD 的说明）：
-        //    否则 y∈(9,69) 这段会出现「127px 处的黑线 + 64px 处的灰线」双线。
+        //    在替身还没追上导航底之前，导航线绝不能亮 —— 否则同屏两条。
+        //    （导航线本身现在也被 --fm-fly-handoff-y 推迟到 y≈262 才亮，
+        //      这里是第二道保险：替身存在期间一律压住。）
         document.documentElement.classList.add(NAV_LINE_HOLD)
       }
 
@@ -2216,20 +2268,47 @@ function setupHeroFly() {
         mix(RULE_FROM[2], RULE_TO[2], e) + ')'
       ruleGhost.style.backgroundColor = col
 
-      // ── 交棒：替身活到落定，导航栏那条真线在最后一小段才接上 ──────────
-      // ⚠️ 这里与上面「颜色渐变」是配套的：既然替身现在能一路活到 t=1、
-      //    且落定时颜色已经和导航线完全一致，那么**导航线越晚亮越好** ——
-      //    它一亮就多一条线（位置差 1px 就是重影）。
-      //    所以让替身在**最后 12% 才淡出**（t: 0.88 → 1.0），
-      //    此窗口里它已经与导航线同位、同色，溶解过程看不出任何接缝。
-      // ⚠️ 那导航线本身要不要藏？不用。它在 scrollY>8 就由 is-scrolled 亮起，
-      //    但**亮着也不冲突**：替身此刻正压在它上面（z-index 60 > 导航 30），
-      //    颜色又一致 —— 替身在的时候它就是替身的底色，看不出是两条。
-      //    只有当替身淡出后，它才独立成为那条线。这是最省事也最稳的交接。
+      // ── 交棒：替身一到位，导航线就在它**底下**同步显形 ────────────────
+      // 站长 2026-10-01 的原话：「在那根黑线飞到顶栏底部的位置之前，
+      // 顶栏底部的线已经出现了」—— 这是**早亮**的问题（导航线抢跑）。
+      // 修法分两层，两层**必须锚定同一个阈值**，否则中间会漏出一段空窗：
+      //
+      //   第一层（setupNavState / --fm-fly-handoff-y）：把导航线的点亮
+      //     阈值从 y>8 推迟到 y≈262（t=0.875）—— 也就是替身**位置与颜色
+      //     双双对齐**的那一刻。在那之前导航线是 `style:none`，
+      //     根本不存在，"抢跑"从源头消除。
+      //
+      //   第二层（这里）：**同一个 y 阈值**上撤掉 NAV_LINE_HOLD，
+      //     让导航线在替身底下正常显形。为什么不等替身死透再撤？
+      //     因为那样交接会变成「替身渐隐 → 导航线突然冒出来」两次动作；
+      //     而现在两条线**同位（64px）、同色（rgb(224,221,213)）、
+      //     同宽（满幅 1414）**，导航线显形时被替身（z-index 60 > 导航 30）
+      //     完全盖住 —— 读起来是"同一根线被导航栏接管"，只有一次动作。
+      //     替身接着继续淡出，底下已经垫好了同色的导航线，全程连续。
+      //
+      // ⚠️⚠️ 判据必须用**同一个 y 阈值**（读 CSS 变量），不能用 e ——
+      //    这是差点踩进去的坑：位置到位（e≈1）发生在 y≈251，
+      //    而第一层的点亮阈值是 y≈262。若这里用 e>=0.9998 就撤 hold，
+      //    则 y∈(251,262) 这段 hold 已撤、导航线却还没亮 ⇒ **一条线都没有**。
+      //    两边锚同一个数，交接点才是同一瞬间，不存在缝。
+      const handoffY = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--fm-fly-handoff-y')
+      )
+      if (isFinite(handoffY) && yNow >= handoffY &&
+          document.documentElement.classList.contains(NAV_LINE_HOLD)) {
+        // ⚠️ 撤之前先确认导航线此刻的颜色**确实等于**替身的最终色。
+        //    不等就成了两条深浅不同的线叠在一起（比不撤更难看）。
+        //    RULE_TO 就是导航线的色（--vp-c-divider）；替身此刻 e≈0.876，
+        //    颜色已插值到 rgb(224,221,213)，与导航线**逐位相同**（离线实测）。
+        document.documentElement.classList.remove(NAV_LINE_HOLD)
+      }
+
+      // 替身继续淡出（t: 0.88 → 1.0）。窗口里它已经与导航线同位同色，
+      // 溶解过程看不出任何接缝。
       const ruleOut = Math.min(Math.max((t - 0.88) / 0.12, 0), 1)
       ruleGhost.style.opacity = String(1 - ruleOut)
 
-      // ⚠️⚠️ 落定后必须**撤掉替身与 hold 类**，否则一条线都没有 ——
+      // ⚠️⚠️ 落定后必须**撤掉替身**，否则一条线都没有 ——
       //    这是实测抓到的第二个 bug：替身的 α 在 t=1.0 归零（看不见了），
       //    但 dropRule() 只在 t<=0.0005（回顶）和切页/窄屏分支里被调用，
       //    t=1 走的是正常分支 ⇒ 替身节点还在、hold 类还挂着 ⇒
