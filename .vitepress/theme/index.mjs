@@ -1729,6 +1729,35 @@ function setupHeroPointer() {
  * 9) 切页必须清场并重算（返回的 cleanup）：SPA 导航不触发 scroll，残留的 inline
  *    opacity 会把新页站名锁成隐形。enhanceApp 的 onAfterRouteChange 里调用。
  */
+/**
+ * 线替身的颜色端点（黑 → 灰），在 setupHeroFly 里做逐帧插值。
+ * ⚠️ 这两个值必须**取自实际用到的 CSS 变量**，不要凭印象写死：
+ *    · 起点：刊头 border 的颜色，实测 rgb(10,10,11) = --vp-c-text-1（纯黑）；
+ *    · 终点：导航栏 border 的颜色，实测 rgb(224,221,213) = --vp-c-divider
+ *      （本项目自定义值 #e0ddd5，**不是** VitePress 默认的 #e2e2e3）。
+ * 下面在运行时优先从变量里读，读不到才退回这两个兜底值。
+ * （解析成 [r,g,b] 数组是为了做逐通道插值，见 update() 里的 mix()。）
+ */
+let RULE_FROM = [10, 10, 11]
+let RULE_TO = [224, 221, 213]
+
+/**
+ * 把 'rgb(r, g, b)' / '#rrggbb' 解析成 [r,g,b]；解析失败返回 null。
+ * 用来把 CSS 变量的实际值喂给颜色插值，避免写死的兜底值在改主题后失真。
+ */
+const parseColor = (s) => {
+  if (!s) return null
+  const t = s.trim()
+  const rgb = t.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i)
+  if (rgb) return [+rgb[1], +rgb[2], +rgb[3]]
+  const hex = t.match(/^#([0-9a-f]{6})$/i)
+  if (hex) {
+    const h = hex[1]
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
+  }
+  return null
+}
+
 function setupHeroFly() {
   if (typeof window === 'undefined') return
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
@@ -1737,9 +1766,20 @@ function setupHeroFly() {
   // ⚠️ 与 custom.css 里那条 html:has(.VPHero) 的守卫必须一致：只在 ≥960px 跑。
   const WIDE = window.matchMedia('(min-width: 960px)')
   let raf = null
-  let ghost = null // 挂在 body 上的固定定位替身
+  let ghost = null // 挂在 body 上的固定定位替身（文字）
+  let ruleGhost = null // 同上，刊头那条 1px 黑线的替身
+  // 线替身的**锁存起点**：只在进入飞行的第一帧取一次，之后全程复用。
+  // ⚠️ 不能每帧从刊头的 rect 现取 —— 刊头自己会随滚动上升，起点跟着跑，
+  //    插值就会过冲（详见 update() 里那段「两个坑」的说明）。
+  let ruleStartBottom = 0
+  let ruleStartLeft = 0
+  let ruleStartWidth = 0
 
   const heroName = () => document.querySelector('.fm-masthead .fm-mast-title')
+  // 刊头那条 1px 通栏线（.fm-masthead 的 border-bottom）。
+  // ⚠️ 线不是独立元素 —— 它是 .fm-masthead 盒子的下边框，取不到 rect。
+  //    所以量的是 .fm-masthead 的**下沿**（rect.bottom 即线的位置）。
+  const heroRule = () => document.querySelector('.fm-masthead')
   // ⚠️ 落点必须是**文字 span**，不能取 `.VPNavBarTitle .title`。
   // 实测那个 .title 是同时包着头像与站名的 <a>：
   //   <a class="title"><img class="VPImage logo" src="/zhihu_avatar.jpg"><span>牧神的笔记</span></a>
@@ -1753,6 +1793,9 @@ function setupHeroFly() {
     if (!link) return null
     return link.querySelector('span') || link
   }
+  // 导航栏本体（用来取「底边」当线的落点）。取 .VPNavBar 而不是 .VPNav —— 前者
+  // 就是那条 64px 高的实心条，底边即分隔线所在；后者还包着移动端菜单等节点。
+  const navBar = () => document.querySelector('.VPNavBar')
 
   /**
    * 造一个**固定定位替身**挂在 body 上，用来承载飞行。
@@ -1838,11 +1881,69 @@ function setupHeroFly() {
     ghost = null
   }
 
+  /**
+   * 线替身：刊头那条 1px 黑线，跟着刊名**一起飞进导航栏**，
+   * 最终变成导航栏底部那条分隔线。
+   *
+   * 站长的原话：「你电脑端首页的那个黑线，能不能和那个『牧神的笔记』一样，
+   * 一起神奇移动啊，那根黑线变成顶栏的底部的那根线」。
+   *
+   * ⚠️ 为什么线必须**也是替身**，不能直接动 .fm-masthead 的 border：
+   *    ① 那条 border 长在 hero 的层叠上下文里（.VPHero .container 有 transform），
+   *       滚进导航栏区间就被 .VPNavBar 的不透明底色吞掉 —— 与刊名同一个死结，
+   *       见 buildGhost 顶部那段说明；
+   *    ② 线的目标态是**全屏宽 + 贴视口顶**，而刊头盒子的宽度只有内容栏宽。
+   *       要改的是「位置 + 宽度 + 颜色」三件事，替身一次说完最干净。
+   *
+   * ⚠️ 颜色要跟着走：起点是刊头的**纯黑**（--vp-c-text-1），
+   *    终点是导航栏分隔线的**灰**（--vp-c-divider）—— 直接抄 targetColor 即可。
+   *    如果固定成黑，线落到导航栏底部会像一道疤（导航栏自己那条线是灰的，
+   *    两条深浅不同的线在同一位置重叠，反而更显眼）。 */
+  const buildRule = (color) => {
+    const r = document.createElement('div')
+    r.className = 'hero-fly-rule' // 只为可调试性（无样式绑定）
+    r.setAttribute('aria-hidden', 'true')
+    r.style.cssText = [
+      'position:fixed',
+      'left:0',
+      'top:0',
+      'margin:0',
+      'padding:0',
+      'height:1px',
+      // ⚠️⚠️ width 必须显式给。div 是块级、又脱离了文档流且没有内容，
+      //    此时 `width:auto` 会收缩成 **0**（离线实测：不写这行，
+      //    getBoundingClientRect().width = 0），于是 scaleX 乘任何数都还是 0
+      //    —— 线飞过去**完全看不见**，但位置与透明度的读数却全都正常，
+      //    只看数字根本发现不了。这里给 1px 作基准，真实宽度全交给 scaleX。
+      'width:1px',
+      'pointer-events:none',
+      // ⚠️ transform-origin 必须是 left center，不能是 center center：
+      //    线的形变主要是**横向拉伸**（内容宽 → 全屏宽）。若以中心为原点，
+      //    scaleX 会让线从两端同时向外长，左端会先脱离刊名左沿、看着像漂移；
+      //    以左缘为原点则左端钉死、只有右端在延伸，读起来才是「线被拉长接上导航栏」。
+      'transform-origin:left center',
+      'will-change:transform,opacity',
+      // z-index 与文字替身同级（60 > 导航栏 30），保证始终压在导航栏之上
+      'z-index:60',
+      'background-color:' + color,
+    ].join(';')
+    document.body.appendChild(r)
+    return r
+  }
+
+  const dropRule = () => {
+    if (ruleGhost && ruleGhost.parentNode) ruleGhost.parentNode.removeChild(ruleGhost)
+    ruleGhost = null
+  }
+
   const update = () => {
     raf = null
     const nav = navTitle()
     if (!nav) {
+      const mastNoNav = heroRule()
+      if (mastNoNav) mastNoNav.style.borderBottomColor = ''
       dropGhost()
+      dropRule()
       return
     }
     const name = heroName()
@@ -1853,7 +1954,10 @@ function setupHeroFly() {
     // 会把新页站名锁成隐形，那页就永远没有站名了。
     if (!name || !WIDE.matches) {
       if (nav.style.opacity) nav.style.opacity = ''
+      const mastOff = heroRule()
+      if (mastOff) mastOff.style.borderBottomColor = ''
       dropGhost()
+      dropRule()
       return
     }
 
@@ -1872,7 +1976,11 @@ function setupHeroFly() {
       //（「牧神的笔记」），同时显示就变成「复制」而不是「移动」。
       // 这一点靠计算样式是发现不了的，实测截图才看得出来。
       nav.style.opacity = ''
+      // 线交还给刊头本体（替身已收起，原地那条 border 必须重新显形）
+      const mastTop = heroRule()
+      if (mastTop) mastTop.style.borderBottomColor = ''
       dropGhost()
+      dropRule()
       return
     }
 
@@ -1886,6 +1994,13 @@ function setupHeroFly() {
     // 布局盒才是准的；反正此刻原刊名已经隐身，它自己怎么变都看不见。
     name.style.transform = 'none'
     name.style.opacity = '0'
+    // 刊头的黑线同样隐身，交给线替身（否则远处还留着一条不动的黑线 → 双线）。
+    // ⚠️ 用 inline 而不是 CSS 类：只有 t>0（真在飞）时才该隐身，
+    //    页面停在顶部时线必须原样可见。
+    const mastEl = heroRule()
+    if (mastEl && mastEl.style.borderBottomColor !== 'transparent') {
+      mastEl.style.borderBottomColor = 'transparent'
+    }
 
     if (!ghost) ghost = buildGhost(name)
 
@@ -1921,14 +2036,115 @@ function setupHeroFly() {
     ghost.style.transform = `translate(${dx * e}px, ${dy * e}px) scale(${1 + (s - 1) * e})`
     ghost.style.opacity = String(1 - out)
     nav.style.opacity = String(out)
+
+    // ── 那条黑线：跟着刊名一起飞，最终变成导航栏底部那条分隔线 ────────────
+    // 站长的原话：「你电脑端首页的那个黑线，能不能和那个『牧神的笔记』一样，
+    // 一起神奇移动啊，那根黑线变成顶栏的底部的那根线」。
+    //
+    // 线的**起点**是刊头盒子的下沿（border-bottom 就长在那儿，取 rect.bottom）；
+    // **终点**是导航栏的底边（navBar.bottom）。
+    //
+    // ⚠️⚠️ 纵向运动的**唯一正确公式**是「锁存起点 + 用文字的同一个 e 插值」：
+    //        lineBottom = startBottom + (导航底 − startBottom) × e
+    //
+    //    这里踩过两次坑，都记下来，别再走回去：
+    //
+    //    坑① 「起点每帧现取」→ 过冲。刊头下沿自己会随滚动上升（实测 y=120 时
+    //        已到 12.6px，而导航底是 64px）。起点跑过终点后 (终点−起点) 变负，
+    //        插值就把线**往回拽**，出现冲上去又掉回来的抖动
+    //        （实测 y=120 线在 52.9、y=180 在 56.9、y=240 才 62.6）。
+    //        ⇒ 起点必须在**进入飞行的第一帧锁存**（ruleStartY），之后不再重取。
+    //
+    //    坑② 「贴滚动走 + max 钳位」→ 节奏与文字脱节。线从 133 到 64 只有 69px
+    //        的行程，而它是 1:1 跟着滚动走的 ⇒ y≈69（t≈0.23）就到位了，
+    //        之后 77% 的滚动里一直钉着不动。而文字要飞到 t=1 ——
+    //        读起来就是「线早早就到了，字还在慢慢飞」，完全不像同一个动作。
+    //        ⇒ 线也必须吃 e 缓动，与文字**共享同一个进度 e**，
+    //          这样两者同时起步、同时落定。
+    //
+    //    现在的写法两条都避开了：起点锁存（坑①），用 e 插值（坑②）。
+    //    落定时刻与文字天然一致（同为 t=1），中途也不会越过 64。
+    // ⚠️ 宽度不能只做平移。起点线长 = 内容栏宽，终点线长 = 全屏宽。
+    //    若只平移不拉伸，线飞过去后会在导航栏底部留出两边空档，
+    //    读起来像「一条短线漂到了那儿」，而不是「这根线变成了导航栏的底边」。
+    //    ⇒ 必须同时做 scaleX（以左缘为原点，见 buildRule 里的 transform-origin）。
+    const mast = heroRule()
+    if (mast) {
+      const r = mast.getBoundingClientRect()
+      const nb = navBar() ? navBar().getBoundingClientRect() : null
+      const targetBottom = nb ? nb.bottom : 0
+      const targetW = window.innerWidth
+
+      if (!ruleGhost) {
+        // 起点色：直接从刊头盒子上读它 border 的实际颜色（此刻还没被 inline 改掉）。
+        // ⚠️ 必须在给 mast 写 borderBottomColor='transparent' **之前**读 ——
+        //    这里之所以还能读到，是因为那边写的是 inline transparent，
+        //    而 getComputedStyle 对 border-color 会返回 rgba(0,0,0,0)。
+        //    所以改用 CSS 变量 --vp-c-text-1 作为起点色，稳定且语义正确。
+        const cs = getComputedStyle(document.documentElement)
+        RULE_FROM = parseColor(cs.getPropertyValue('--vp-c-text-1')) || RULE_FROM
+        RULE_TO = parseColor(cs.getPropertyValue('--vp-c-divider')) || RULE_TO
+        ruleGhost = buildRule(`rgb(${RULE_FROM.join(',')})`)
+        // 锁存起点（坑①）：只在飞行第一帧取一次，之后不再重取。
+        ruleStartBottom = r.bottom
+        ruleStartLeft = r.left
+        ruleStartWidth = r.width
+      }
+
+      const lineBottom = ruleStartBottom + (targetBottom - ruleStartBottom) * e
+      const lineLeft = ruleStartLeft + (0 - ruleStartLeft) * e
+      const scaleX =
+        ruleStartWidth > 0 ? 1 + (targetW / ruleStartWidth - 1) * e : targetW
+
+      // 替身自身 left/top 钉在视口原点，位置全交给 transform ——
+      // 每帧只写一个 transform，属性更少，也不会出现 left/top 与 transform
+      // 两条定位通道互相打补丁的情况。
+      ruleGhost.style.left = '0px'
+      ruleGhost.style.top = '0px'
+      ruleGhost.style.transform =
+        `translate(${lineLeft}px, ${lineBottom - 1}px) scaleX(${scaleX})`
+
+      // ── 颜色：黑 → 灰，与位置同步渐变 ────────────────────────────────
+      // 站长要的是「黑线**变成**顶栏底部那根线」。顶栏那根线是灰的
+      // （--vp-c-divider = #e0ddd5），而刊头的线是纯黑的（--vp-c-text-1
+      // = #0a0a0b）。如果替身一路黑到底，它会和导航栏的灰线在颜色上对不上，
+      // 交接瞬间能看到"黑线突然变淡"的跳变 —— 那就不是"变成"，是"换了一条"。
+      // ⇒ 颜色也走 e 插值，落定时正好等于导航线的颜色，交接零跳变。
+      //
+      // ⚠️ 用两次 setProperty 逐个通道插值，不要用 CSS transition 去做：
+      //    这是每帧手动驱动的 scrubbing（滚动可正可逆），
+      //    transition 会引入"追不上滚动"的滞后，来回滚时尤其明显。
+      const mix = (a, b, k) => Math.round(a + (b - a) * k)
+      const col =
+        'rgb(' +
+        mix(RULE_FROM[0], RULE_TO[0], e) + ',' +
+        mix(RULE_FROM[1], RULE_TO[1], e) + ',' +
+        mix(RULE_FROM[2], RULE_TO[2], e) + ')'
+      ruleGhost.style.backgroundColor = col
+
+      // ── 交棒：替身活到落定，导航栏那条真线在最后一小段才接上 ──────────
+      // ⚠️ 这里与上面「颜色渐变」是配套的：既然替身现在能一路活到 t=1、
+      //    且落定时颜色已经和导航线完全一致，那么**导航线越晚亮越好** ——
+      //    它一亮就多一条线（位置差 1px 就是重影）。
+      //    所以让替身在**最后 12% 才淡出**（t: 0.88 → 1.0），
+      //    此窗口里它已经与导航线同位、同色，溶解过程看不出任何接缝。
+      // ⚠️ 那导航线本身要不要藏？不用。它在 scrollY>8 就由 is-scrolled 亮起，
+      //    但**亮着也不冲突**：替身此刻正压在它上面（z-index 60 > 导航 30），
+      //    颜色又一致 —— 替身在的时候它就是替身的底色，看不出是两条。
+      //    只有当替身淡出后，它才独立成为那条线。这是最省事也最稳的交接。
+      const ruleOut = Math.min(Math.max((t - 0.88) / 0.12, 0), 1)
+      ruleGhost.style.opacity = String(1 - ruleOut)
+    }
   }
 
   const onScroll = () => {
     if (raf === null) raf = requestAnimationFrame(update)
   }
   // 视口一变，刊名的 clamp() 字号就与替身定格时的字号对不上了，必须重建替身
+  // （线替身同样要靠新宽度重算，一并丢掉）
   const onResize = () => {
     dropGhost()
+    dropRule()
     onScroll()
   }
   window.addEventListener('scroll', onScroll, { passive: true })
@@ -1963,7 +2179,10 @@ function setupHeroFly() {
       name.style.opacity = ''
       name.style.transformOrigin = ''
     }
+    const mastClean = heroRule()
+    if (mastClean) mastClean.style.borderBottomColor = ''
     dropGhost()
+    dropRule()
     requestAnimationFrame(onScroll)
   }
 }
