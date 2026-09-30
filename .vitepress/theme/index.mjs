@@ -1742,6 +1742,29 @@ let RULE_FROM = [10, 10, 11]
 let RULE_TO = [224, 221, 213]
 
 /**
+ * 压制导航栏那条真线用的类名。
+ *
+ * ⚠️⚠️ 为什么必须有这个类 —— 这是实测抓到的**最难看的一个 bug**：
+ *    导航栏的分隔线由 `.VPNav.is-scrolled .VPNavBar` 控制，
+ *    `is-scrolled` 的触发条件是 **window.scrollY > 8**（几乎是刚开始滚）。
+ *    而线替身此刻还在刊头位置（实测 y=9 时替身在 127px，导航线在 64px），
+ *    于是 y∈(9, 69) 这一段里**同屏两条线**：一条近黑的在 127px 往上飘、
+ *    一条浅灰的钉在 64px。垂直差最多 63px、色差 195 —— 一眼就是两根线，
+ *    比不做这个改动还难看。
+ *    （只靠「位置重合后自然重叠」是不够的：`is-scrolled` 亮得太早，
+ *      替身至少还要滚 60px 才追上导航底，这 60px 里就是实打实的双线。）
+ *
+ * 所以：**替身存在期间，把导航栏那条线压掉**；替身一撤，类一移除，
+ * 它自然回来。交接点选在替身淡出窗口（t=0.88）之前 —— 那时替身已经
+ * 与导航底同位、同色，导航线此时接管，视觉上严丝合缝。
+ *
+ * 实现上不用 inline style（那是给 .VPNavBar 这个 VitePress 自己的节点写样式，
+ * 会与它的响应式逻辑打架），改为在 <html> 上挂一个类，由 custom.css 写规则。
+ * 这样样式归属清晰，也方便以后在 CSS 里调整。
+ */
+const NAV_LINE_HOLD = 'fm-rule-flying'
+
+/**
  * 把 'rgb(r, g, b)' / '#rrggbb' 解析成 [r,g,b]；解析失败返回 null。
  * 用来把 CSS 变量的实际值喂给颜色插值，避免写死的兜底值在改主题后失真。
  */
@@ -1774,6 +1797,14 @@ function setupHeroFly() {
   let ruleStartBottom = 0
   let ruleStartLeft = 0
   let ruleStartWidth = 0
+  // 这趟飞行是否已跑完（替身淡出、已交棒给导航线）。
+  // ⚠️ 它只用来**抑制"落定后每帧重建替身"**这件事，绝不能用它永久性地
+  //    关闭飞行 —— 实测抓到的 bug：只在 t<=0（完全回顶）才复位它，
+  //    结果从 y=250 往回滚到 y=150/80/30 时替身全程不存在，
+  //    **往回滚的整段路线上那条线都消失了**（只剩导航栏的灰线）。
+  //    正解：t 一旦掉出"已落定"区间（t < 0.995）就立即复位，
+  //    让替身能重新按当前滚动位置建起来 —— 这样 scrubbing 可逆。
+  let ruleDone = false
 
   const heroName = () => document.querySelector('.fm-masthead .fm-mast-title')
   // 刊头那条 1px 通栏线（.fm-masthead 的 border-bottom）。
@@ -1934,6 +1965,9 @@ function setupHeroFly() {
   const dropRule = () => {
     if (ruleGhost && ruleGhost.parentNode) ruleGhost.parentNode.removeChild(ruleGhost)
     ruleGhost = null
+    // 替身一撤，导航栏那条线就该回来 —— 两者的生命周期**严格绑定**，
+    // 所以复位放在这里，而不是散落在 update() 的各个 return 分支里。
+    document.documentElement.classList.remove(NAV_LINE_HOLD)
   }
 
   const update = () => {
@@ -1944,6 +1978,7 @@ function setupHeroFly() {
       if (mastNoNav) mastNoNav.style.borderBottomColor = ''
       dropGhost()
       dropRule()
+      ruleDone = false
       return
     }
     const name = heroName()
@@ -1958,6 +1993,7 @@ function setupHeroFly() {
       if (mastOff) mastOff.style.borderBottomColor = ''
       dropGhost()
       dropRule()
+      ruleDone = false
       return
     }
 
@@ -1981,6 +2017,8 @@ function setupHeroFly() {
       if (mastTop) mastTop.style.borderBottomColor = ''
       dropGhost()
       dropRule()
+      // 回顶 = 这趟飞行作废，允许下次滚动重新起飞（含重新锁存起点）
+      ruleDone = false
       return
     }
 
@@ -2069,28 +2107,70 @@ function setupHeroFly() {
     //    读起来像「一条短线漂到了那儿」，而不是「这根线变成了导航栏的底边」。
     //    ⇒ 必须同时做 scaleX（以左缘为原点，见 buildRule 里的 transform-origin）。
     const mast = heroRule()
-    if (mast) {
+    // ⚠️ ruleDone 的复位放在这里，而不是只在 t<=0（回顶）那个分支里 ——
+    //    原因是 scrubbing 可逆：用户滚到底再往回滚到中途时，t 会从 1 掉回
+    //    0.3/0.5 这种中间值，此时**必须让替身重新建起来**，否则
+    //    "往回滚的整段路线上那条线都不见了"（实测 y=250 → 150 → 80 → 30
+    //    全程替身 = 无，只剩导航栏的灰线）。
+    //    所以复位条件放宽成"只要还没落定就复位"，与 ruleOut 的窗口严格互补。
+    // ⚠️ 条件是 t < 0.995（与下面 ruleOut>=1 的判定互补），不是 t <= 0。
+    if (t < 0.995) ruleDone = false
+    if (mast && !ruleDone) {
       const r = mast.getBoundingClientRect()
       const nb = navBar() ? navBar().getBoundingClientRect() : null
       const targetBottom = nb ? nb.bottom : 0
       const targetW = window.innerWidth
+      // 当前滚动量。锁存起点与算终点都要用它把「视口坐标 ↔ 页面坐标」对齐。
+      const yNow = window.scrollY || window.pageYOffset || 0
 
       if (!ruleGhost) {
-        // 起点色：直接从刊头盒子上读它 border 的实际颜色（此刻还没被 inline 改掉）。
-        // ⚠️ 必须在给 mast 写 borderBottomColor='transparent' **之前**读 ——
-        //    这里之所以还能读到，是因为那边写的是 inline transparent，
-        //    而 getComputedStyle 对 border-color 会返回 rgba(0,0,0,0)。
-        //    所以改用 CSS 变量 --vp-c-text-1 作为起点色，稳定且语义正确。
+        // 起点色：从 CSS 变量读（此时刊头 border 已被写成 inline transparent，
+        // 直接读盒子会得到 rgba(0,0,0,0)，所以取变量更稳、语义也更正确）。
         const cs = getComputedStyle(document.documentElement)
         RULE_FROM = parseColor(cs.getPropertyValue('--vp-c-text-1')) || RULE_FROM
         RULE_TO = parseColor(cs.getPropertyValue('--vp-c-divider')) || RULE_TO
         ruleGhost = buildRule(`rgb(${RULE_FROM.join(',')})`)
-        // 锁存起点（坑①）：只在飞行第一帧取一次，之后不再重取。
-        ruleStartBottom = r.bottom
-        ruleStartLeft = r.left
+        // 锁存起点：`ruleStartBottom` 是「**页面在顶部时**刊头下沿的视口坐标」。
+        // ⚠️⚠️ 这个值必须是**与当前滚动位置无关的常量**，整趟飞行只用它算
+        //    （见下方 lineBottom 的「方案 C」说明）。所以不能直接锁存 r.bottom：
+        //    那拿到的是"此刻滚动位置下的下沿"。正常从头往下滚时碰巧差不多
+        //    （首帧 y 还很小），但**往回滚时会错得很离谱**：
+        //    从 y=250 往回滚到 y=150 时重建替身，锁到的 r.bottom 是
+        //    "y=250 那会儿的位置"（已经在视口外），算出的线冲到屏幕上方 ——
+        //    实测 bottom = −7.5 / −68.2 / −99.9，整段回滚路线上都看不到它。
+        //    正解：刊头是 1:1 跟随滚动的 ⇒ 顶部的下沿 = 当前下沿 + scrollY。
+        //    加回 scrollY 就是那个常量，任意滚动位置、任意方向都成立。
+        ruleStartBottom = r.bottom + yNow
+        ruleStartLeft = r.left   // 横向不随滚动变，直接锁存即可
         ruleStartWidth = r.width
+        // ⚠️ 替身一出现就压掉导航栏那条真线（详见 NAV_LINE_HOLD 的说明）：
+        //    否则 y∈(9,69) 这段会出现「127px 处的黑线 + 64px 处的灰线」双线。
+        document.documentElement.classList.add(NAV_LINE_HOLD)
       }
 
+      // 纵向位置（**方案 C：锁存起点 + 用文字的同一个 e 插值**）。
+      //
+      //     lineBottom = startBottom + (导航底 − startBottom) × e
+      //
+      // 这个式子里 startBottom 是「**页面在顶部时**刊头下沿的视口坐标」——
+      // 一个与当前滚动位置无关的**常量**（本站实测 133px）。一旦锁存好，
+      // 整条轨迹就固定了：y 从 0 滚到 300 的过程中它单调地从 133 收到 64。
+      //
+      // ⚠️⚠️ 对比过的另外两种写法（都错，别再走回头路）：
+      //
+      //   写法 A「钳位」: lineBottom = max(刊头当前下沿, 导航底)
+      //     单调、无过冲，但它只在 y<69 这 69px 里动 —— 之后 77% 的滚动里
+      //     完全静止。而文字要飞到 t=1（y=300）⇒ 读起来是
+      //     「线早早就到了，字还在慢慢飞」，完全是两个动作。
+      //
+      //   写法 B「起点每帧现取 + 插值」: lineBottom = 刊头当前下沿 + (导航底 − 刊头当前下沿)×e
+      //     刊头当前下沿**自己会越过终点**（y=120 时已到 12.6，而导航底 64），
+      //     越过之后 (终点 − 起点) 变负，插值把线**往回拽**：
+      //     实测 y=90 → 56.8、y=120 → 53.0、y=150 → 53.9、y=180 → 56.9，
+      //     深深冲过 64 再回来，肉眼可见的过冲抖动。
+      //
+      // 写法 C 同时避开两者：起点恒定 ⇒ 不会过冲；起点够远（133）⇒
+      // 整段飞行都在动，且与文字共享 e ⇒ 同起步、同落定。
       const lineBottom = ruleStartBottom + (targetBottom - ruleStartBottom) * e
       const lineLeft = ruleStartLeft + (0 - ruleStartLeft) * e
       const scaleX =
@@ -2134,6 +2214,22 @@ function setupHeroFly() {
       //    只有当替身淡出后，它才独立成为那条线。这是最省事也最稳的交接。
       const ruleOut = Math.min(Math.max((t - 0.88) / 0.12, 0), 1)
       ruleGhost.style.opacity = String(1 - ruleOut)
+
+      // ⚠️⚠️ 落定后必须**撤掉替身与 hold 类**，否则一条线都没有 ——
+      //    这是实测抓到的第二个 bug：替身的 α 在 t=1.0 归零（看不见了），
+      //    但 dropRule() 只在 t<=0.0005（回顶）和切页/窄屏分支里被调用，
+      //    t=1 走的是正常分支 ⇒ 替身节点还在、hold 类还挂着 ⇒
+      //    导航线被永久压成 transparent ⇒ **整页顶部一条线都没有**。
+      //    实测症状：y=300 时替身 α=0、导航线 rgba(0,0,0,0)。
+      //    修法：淡出走完（ruleOut>=1）就交棒 —— 此刻替身已与导航底同位、
+      //    同色（实测 rgb(224,221,213) vs 导航线同值），撤掉看不出任何跳变。
+      //    ⚠️ 同时置 ruleDone：不加这个标记的话，下一帧 `!ruleGhost` 又会成立、
+      //      重新建替身再立刻 drop，每帧反复建删节点（无谓开销，且替身的
+      //      起点锁存会被重置 —— 回顶那次会因锁存丢失而跳位）。
+      if (ruleOut >= 1) {
+        dropRule()
+        ruleDone = true
+      }
     }
   }
 
@@ -2145,6 +2241,8 @@ function setupHeroFly() {
   const onResize = () => {
     dropGhost()
     dropRule()
+    // 视口变了 → 线的起点/终点都变了，锁存值作废，必须允许重新起飞重锁
+    ruleDone = false
     onScroll()
   }
   window.addEventListener('scroll', onScroll, { passive: true })
@@ -2183,6 +2281,7 @@ function setupHeroFly() {
     if (mastClean) mastClean.style.borderBottomColor = ''
     dropGhost()
     dropRule()
+    ruleDone = false
     requestAnimationFrame(onScroll)
   }
 }

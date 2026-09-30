@@ -824,6 +824,37 @@ html .VPNav.is-scrolled .VPNavBar.has-sidebar {
   border-bottom: 1px solid var(--vp-c-divider);
 }
 
+/* 刊头黑线飞行期间：把导航栏自己那条分隔线压住。
+   ────────────────────────────────────────────────────────────
+   ⚠️⚠️ 这条规则是实测逼出来的，不是预防性的。
+   导航线的触发条件（`.VPNav.is-scrolled`）是 **scrollY > 8** —— 几乎是刚开始滚；
+   而此刻刊头那条黑线的替身还在 127px 处往上飘（它要到 scrollY≈69 才追上导航底）。
+   于是 scrollY∈(9,69) 这 60px 里**同屏两条线**：
+     127px 处的近黑线 + 64px 处的浅灰线，垂直差最大 63px、色差 195
+   —— 一眼就是两根，比不做飞行还难看。（实测数据：y=9 时替身 rgb(29,28,29)@127，
+      导航线 rgb(224,221,213)@64。）
+   ⇒ 替身存在期间，导航线让位；替身一撤，类一移除，线自然回来。
+   类的挂/撤都绑在线替身的生命周期上（见 index.mjs 的 dropRule 与 NAV_LINE_HOLD），
+   交接点在替身淡出（t=0.88）之前 —— 那时替身已与导航底同位、同色，看不出接缝。
+
+   ⚠️ 用 !important 是因为 VitePress 那条规则是 (0,4,0) 的高权重
+      （`.home.top` 算两个类，:not() 取参数最高权重），
+      而组件样式又是运行时注入、排在 custom.css 之后。不硬拼权重压不住。
+   ⚠️ 只压 border-color，不要动 border-width —— 改宽度会让 64px 的导航条
+      高度变 65px，页面整体下移 1px（这种"滚动时页面抖一下"极难排查）。
+   ⚠️ 同时要把上面 .VPNavBar 那条 `transition: border-color .3s` **关掉**：
+      这条线在飞行期间是"被压住 / 放开"的瞬态切换，若走过渡，
+      放手时会**淡入 0.3s** —— 而替身是逐帧跟着滚动的，
+      两者速度不一致，交接处会出现一条"正在慢慢变深"的线糊在替身上。
+      飞行期间禁用过渡，让它即时响应。 */
+html.fm-rule-flying .VPNavBar {
+  transition: none;
+}
+html.fm-rule-flying .VPNav.is-scrolled .VPNavBar,
+html.fm-rule-flying .VPNav.is-scrolled .VPNavBar.has-sidebar {
+  border-bottom-color: transparent !important;
+}
+
 /* ---------- ⑫ Hero 入场：标题/题句/标签/按钮逐层浮现 ---------- */
 .VPHero .name {
   animation: hero-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
