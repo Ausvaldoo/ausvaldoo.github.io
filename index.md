@@ -520,7 +520,14 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
 .fm-mq-row.is-0 .fm-mq-track { animation-duration: 92s; }
 .fm-mq-row.is-1 .fm-mq-track { animation-duration: 74s; animation-direction: reverse; }
 .fm-mq-row.is-2 .fm-mq-track { animation-duration: 108s; }
+/* 悬停暂停：鼠标停在词带上时别让它继续跑，让人能安心点某个词。 */
 .fm-mq:hover .fm-mq-track { animation-play-state: paused; }
+/* ⚠️ 键盘可达性（WCAG 2.4.7 Focus Visible，2026-10-03 补）：
+   原来只有 :hover 会暂停，**键盘用户 Tab 进词带的链接时动画照跑** ——
+   焦点框会被持续位移的轨道带出视野，读屏用户不知道自己在第几个词上。
+   :focus-within 让"焦点在词带内（含任一链接）"等价于悬停 → 同样暂停。
+   纯 CSS，无需 JS；Tab 走开即恢复（与 :hover 同理）。 */
+.fm-mq:focus-within .fm-mq-track { animation-play-state: paused; }
 @keyframes fm-mq-scroll {
   to { transform: translateX(-50%); }
 }
