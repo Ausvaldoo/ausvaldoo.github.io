@@ -141,12 +141,19 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
       </a>
     </div>
   </div>
-  <!-- 移动端专用：单行全量标签（桌面隐藏）。窄屏显示，原生横向滚动，含全部 {{ tagCount }} 个标签 -->
+  <!-- 移动端专用：单行全量标签（桌面隐藏）。窄屏显示，原生横向滚动 + JS 自动循环。
+       ⚠️ 2026-10-03：标签**铺 3 份**（v-for 三次、data-copy 0/1/2）而不是 1 份 ——
+       JS 自动循环靠"跑完一份就回绕"实现（见 index.mjs setupMarqueeAuto）：
+       内容只有 1 份时滚到右端就没有下一份可接，**无法循环**；
+       铺 3 份后，无论滚到哪里都能取模回绕到某一份的起点，视觉上首尾相接。
+       3 份 = 约 3 倍屏宽，够回绕又不至于让 DOM 过大。桌面 is-m 隐藏，不受影响。 -->
   <div v-if="mqTracks[0].length" class="fm-mq-row is-m" aria-hidden="false">
     <div class="fm-mq-track">
-      <a v-for="(t, i) in tagEntries" :key="'m' + i" class="fm-mq-tag" data-copy="0" :href="`/tags#tag-${t[0]}`">
-        {{ t[0] }}<sup>{{ t[1] }}</sup>
-      </a>
+      <template v-for="c in 3" :key="'mc'+c">
+        <a v-for="(t, i) in tagEntries" :key="'m' + c + '_' + i" class="fm-mq-tag" :data-copy="c - 1" :href="`/tags#tag-${t[0]}`">
+          {{ t[0] }}<sup>{{ t[1] }}</sup>
+        </a>
+      </template>
     </div>
   </div>
 </section>
@@ -612,21 +619,26 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
      ⚠️ 也不要只藏字、留着线 —— 一条孤零零的纯黑横线横在页面顶部，最难看。 */
   .fm-masthead { display: none; }
   .fm-mast-sub { display: none; }
-  /* 手机端词带：只留一行，但**必须能手动滑动**。
+  /* 手机端词带：只留一行，但**既能循环自动滚、也能手动滑动**。
      三行在 390px 窄屏上会织成一张密网，每行只露 3-4 个词，
      失去"一条一条读"的节奏——所以留 is-0 一行。
 
-     ⚠️⚠️ 2026-09-27 重写（站长反馈："手机上滚动标签，标签会滚到消失、找不回来"）：
-     旧做法是「CSS 动画持续 translateX」+「overflow-x:auto 手滑」**并存** ——
-     这两者是**互斥的位移模型**，叠加起来就会飞：
-       · 动画每帧都在写 transform，手指滑动写的是 scrollLeft；
-       · track 又是 `width:max-content` 重复 6 遍（约 6 倍屏宽），
-         手指滑出去的是 scrollLeft，但视觉位置被 transform 又推走一大截；
-       · 结果：词带一路滑到空白区，怎么往回拨都回不来（动画还在推）。
-     正解：**移动端不要动画，只留原生横向滚动**。
-       scrollLeft 是唯一的位置真相 → 滚到哪停哪，永远能滑回来；
-       再配 scroll-snap 让它停在词与词之间，手感干净。
-     桌面端不受影响（那里靠 :hover 暂停 + 鼠标滚轮，没有这个问题）。 */
+     ⚠️⚠️ 2026-10-03 再改（站长："之前手机上都做得好好的，循环滚动，
+     然后手也可以滑动"——要恢复两者并存）：
+     2026-09-27 曾因「手机上滚动标签，标签会滚到消失、找不回来」把移动端
+     动画整个关掉，只留手滑。那次的问题是旧实现让 **CSS 动画写 transform**
+     和 **手指滑动写 scrollLeft** 两套位移模型打架：
+       · track 是 `width:max-content` 重复 6 遍（约 6 倍屏宽），
+         手指滑出去的是 scrollLeft，视觉位置却被 transform 又推走一大截；
+       · 结果词带一路滑进空白区，怎么往回拨都回不来（动画还在推）。
+
+     现在的正解：**移动端也自动循环，但位移模型只用 scrollLeft**
+     （由 JS 的 setupMarqueeAuto 驱动），**不再有 CSS transform 动画**：
+       · 自动滚 = JS 每帧改 scrollLeft；手滑 = 浏览器原生改 scrollLeft；
+         两者写的是**同一个量**，天生不打架 → 手滑随时能覆盖、永远滑得回来；
+       · 循环靠"到右端就无缝跳回左端"（内容重复排列，跳回处视觉接得上）；
+       · 触摸时自动滚**暂停**，松手 idle 一会儿再恢复（不跟手指抢）。
+     ⇒ 结果：自动循环 + 手滑并存，且"滚到消失找不回来"的坑结构性消失。 */
   /* 桌面三行错速词带在窄屏会织成密网、每行只露 3-4 词 → 整组隐藏，
      改由 .is-m 单行全量承载（含全部 {{ tagCount }} 个标签）。 */
   .fm-mq-row.is-0,
@@ -642,16 +654,19 @@ const mqTracks = mqRows.map((r) => Array.from({ length: 6 }, () => r).flat())
     overscroll-behavior-x: contain;
   }
   .fm-mq-row.is-m::-webkit-scrollbar { display: none; }
-  /* 移动端关掉桌面动画，只留原生横向滚动（否则 scrollLeft 与 transform 叠加会飞走） */
+  /* ⚠️ 移动端**不挂 CSS transform 动画**（动画 = 写 transform，会和手滑的
+     scrollLeft 打架，正是 2026-09-27「滚到消失找不回来」的根因）。
+     这里显式 animation:none 只是兜底（防止继承桌面那条），真正的循环由
+     index.mjs 的 setupMarqueeAuto 用 scrollLeft 驱动 —— 手滑与自动滚共用
+     同一个位置模型，可互相覆盖、永远滑得回来。 */
   .fm-mq-row.is-m .fm-mq-track {
     animation: none;
   }
-  /* 原生滚动 + 边缘渐隐由 setupMarqueeTouch 按 scrollLeft 动态收放 */
+  /* 自动滚与 scroll-snap 互斥：snap 会在每次 scroll 后把位置"吸"到词边界，
+     和 JS 的逐帧推进打架（表现为一顿一顿、或被吸回原位）。
+     所以移动端交给原生滚动惯性即可，不加 snap。 */
   .fm-mq-row.is-m {
-    scroll-snap-type: x proximity;
-  }
-  .fm-mq-row.is-m .fm-mq-tag {
-    scroll-snap-align: start;
+    scroll-snap-type: none;
   }
 }
 </style>

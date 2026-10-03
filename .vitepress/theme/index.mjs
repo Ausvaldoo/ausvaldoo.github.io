@@ -2537,6 +2537,168 @@ function setupMarqueeTouch() {
 }
 
 /**
+ * 移动端词带自动循环（2026-10-03 新增）。
+ *
+ * 目标：站长要「循环滚动 + 手指可滑」**两者并存**。
+ * 2026-09-27 曾把移动端自动滚关掉（当时反馈"滚到消失、找不回来"），
+ * 根因是旧实现让 **CSS 动画写 transform** 与 **手指滑动写 scrollLeft**
+ * 两套位移模型打架 —— 手指滑的是 scrollLeft，视觉位置却被 transform
+ * 继续推，词带滑进空白区再也回不来。
+ *
+ * 本版正解：**位移模型只留 scrollLeft 一个**。
+ *   · 自动循环 = JS 每帧写 scrollLeft（不是 transform）；
+ *   · 手指滑动 = 浏览器原生写 scrollLeft；
+ *   两者写的是同一个量 → 天然不打架，手滑随时覆盖自动、永远滑得回来。
+ *
+ * 循环怎么做到"无缝"（这是关键）：
+ *   内容被排成 N 份完全相同的副本，总宽 = N × 单份宽。
+ *   每帧把 scrollLeft 往前推；一旦 ≥ 单份宽（也就是刚好跑完一份），
+ *   就**减去单份宽**跳回起点。因为第 k 份和第 k+1 份内容一模一样，
+ *   减去单份宽的这一刻，视觉上正好接上下一份的同一个词 ⇒ 肉眼连续。
+ *   （等价于把无限长的带子"卷"成环，不存在真正的尽头，也就不会滑进空白。）
+ *
+ * ⚠️ 与 setupMarqueeTouch 的分工：
+ *   setupMarqueeTouch 只管**边缘渐隐**（滑到两端把渐隐收成 0）；
+ *   本函数只管**推进位置**。两者都只碰 scrollLeft，互不干扰。
+ *   渐隐在循环模式下基本看不到边缘（内容无限），但保留它做兜底更安全。
+ */
+function setupMarqueeAuto() {
+  if (typeof window === 'undefined') return () => {}
+  const gac = new AbortController()
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  /* 每帧推进的像素数。0.6px/帧 @60fps ≈ 36px/s，缓慢不抢眼。 */
+  const SPEED = 0.6
+  /* 松手后多久恢复自动滚（ms）。给手滑留出"我还要继续划"的余地。 */
+  const RESUME_DELAY = 1600
+  let raf = 0
+  let row = null
+  let unitW = 0     // 单份内容宽度（= 一轮的内容宽）
+  let paused = false   // 用户正在触摸 → 暂停
+  let resumeAt = 0     // 恢复自动滚的时间戳
+
+  const COPIES = 3   // 移动端 track 里标签铺的份数（须与 index.md 模板里的 v-for="c in 3" 一致）
+
+  const isVisible = (el) =>
+    !!el && getComputedStyle(el).display !== 'none' && el.offsetWidth > 0
+
+  const measure = () => {
+    if (!row) return
+    const track = row.querySelector('.fm-mq-track')
+    if (!track) return
+    /* 单份宽 = track 总宽 / 份数。模板把标签重复铺了 COPIES 份，
+       回绕时按"单份"取模，首尾才能接得上（内容一模一样 ⇒ 视觉连续）。
+       ⚠️ 不能直接用 scrollWidth（那是全部 3 份的总宽）——
+       那样 x >= unitW 几乎永远不成立，回绕失效、内容只滚到右端就停。 */
+    unitW = track.scrollWidth / COPIES
+    if (!(unitW > 0)) unitW = row.scrollWidth / COPIES
+  }
+
+  const tick = () => {
+    raf = 0
+    if (!row || paused || reduced) return
+    /* 桌面端 .is-m 是隐藏的（词带走 CSS 动画）→ 这里不跑，纯省性能。
+       断点切回窄屏时 resize 会再 start()，所以不会"停了就再也不动"。 */
+    if (!isVisible(row)) return
+    const max = row.scrollWidth - row.clientWidth
+    if (max <= 0) return   // 内容比容器窄（还没布局好 / 标签太少）→ 不动
+    let x = row.scrollLeft + SPEED
+    /* 无缝回绕：跑完一份就跳回起点（视觉接上下一份的同一个词）。
+       用取模而非一次相减，是为了兼容"一帧跨过多份"（断点切换后 max 突变）。 */
+    if (unitW > 0 && x >= unitW) x = x % unitW
+    /* 兜底：即便因为回绕跳到内容中段，也不让它越过真实可滚范围 */
+    row.scrollLeft = Math.max(0, Math.min(x, max))
+    raf = requestAnimationFrame(tick)
+  }
+
+  const start = () => { if (!raf && row && !reduced && !paused) raf = requestAnimationFrame(tick) }
+  const stop = () => { if (raf) { cancelAnimationFrame(raf); raf = 0 } }
+
+  const bind = (el) => {
+    if (!el || el.dataset.autoBound) return
+    el.dataset.autoBound = '1'
+    row = el
+    measure()
+    const on = (ev, fn, o) => el.addEventListener(ev, fn, Object.assign({}, o || {}, { signal: gac.signal }))
+
+    /* 触摸/拖动 → 暂停自动滚，并计划稍后恢复。
+       pointerdown/pointermove（含鼠标）在移动端也能触发，统一用 pointer 事件。 */
+    on('pointerdown', () => {
+      paused = true
+      stop()
+      resumeAt = performance.now() + RESUME_DELAY
+    }, { passive: true })
+    on('pointermove', () => {
+      /* 手指在划 → 持续推迟恢复 */
+      resumeAt = performance.now() + RESUME_DELAY
+    }, { passive: true })
+    const onUp = () => {
+      if (!paused) return
+      /* 延迟到 idle 阈值后再恢复，期间若又 pointerdown 会再次推迟 */
+      const wait = Math.max(0, resumeAt - performance.now())
+      setTimeout(() => {
+        if (paused && performance.now() >= resumeAt) {
+          paused = false
+          measure()   // 恢复前重测，兼容断点切换后的宽度变化
+          start()
+        } else if (paused) {
+          onUp()     // 期间又触摸过 → 再等一轮
+        }
+      }, wait)
+    }
+    window.addEventListener('pointerup', onUp, { signal: gac.signal, passive: true })
+    window.addEventListener('pointercancel', onUp, { signal: gac.signal, passive: true })
+
+    start()
+  }
+
+  const arm = () => {
+    /* 只在**窄屏**（.is-m 可见时）接管。桌面端 .is-m 是 display:none，
+       三条词带走 CSS 动画，不归这里管。 */
+    const m = document.querySelector('.fm-mq-row.is-m')
+    if (!m || !isVisible(m)) return
+    bind(m)
+  }
+  arm()
+  /* ⚠️ 必须多帧重试：enhanceApp 早于首页组件挂载，此刻 .fm-mq-row 还不存在。
+     只调一次 arm() 会空跑，词带就永远不自动滚。bind 内有 dataset.autoBound
+     守卫，重复调用无害。 */
+  let tries = 0
+  const armRetry = () => {
+    arm()
+    const m = document.querySelector('.fm-mq-row.is-m')
+    const bound = m && m.dataset.autoBound
+    if (!bound && ++tries < 30) requestAnimationFrame(armRetry)
+  }
+  requestAnimationFrame(armRetry)
+  /* 断点切换 / 尺寸变化：重量、重启（暂停态下也要重量） */
+  window.addEventListener('resize', () => {
+    measure()
+    if (paused) return
+    stop(); start()
+  }, { passive: true, signal: gac.signal })
+  /* 切页清场：SPA 切走首页后 .is-m 的 DOM 消失，rAF 若还在跑会对着
+     已卸载的节点写 scrollLeft（无效但不报错），回来时也不会自动续上。
+     所以提供一个 rebind：切页后由外部重新调用，命中新的 .is-m 就接管。 */
+  const rebind = () => {
+    row = null
+    measure()          // row 为空时 measure 内部会 return，安全
+    unitW = 0
+    paused = false
+    resumeAt = 0
+    arm()
+    /* 重新 arm 后若还没绑（DOM 刚建好要等一帧），多试几帧 */
+    let n = 0
+    const retry = () => {
+      const m = document.querySelector('.fm-mq-row.is-m')
+      if (m && !m.dataset.autoBound && ++n < 30) requestAnimationFrame(retry)
+      else if (m && m.dataset.autoBound) { row = m; measure(); if (!paused) start() }
+    }
+    requestAnimationFrame(retry)
+  }
+  return rebind
+}
+
+/**
  * 系列专题横带（2026-09-26 v8 —— **逐行对照 linearfestivals 的实现**）。
  *
  * 参考站组件（`原站存档/…/_files/0zqrn7anp54_4.js.下载`，搜 `data-card` / `Previous event`）
@@ -2696,12 +2858,38 @@ function setupSeriesStrip() {
     if (!cards.length) return
     const N = cards.length
     stage.dataset.stripBound = VER
-    /* Lenis 的**官方**跳过约定（双保险，见 vendor/lenis.mjs 的 onVirtualScroll）：
-       它在 window 上收 wheel，然后沿 event.composedPath() 找这个属性，
-       找到了就当没看见。有了它，即使将来 stopPropagation 因为别的原因失效
-       （比如监听器挂到了 document 上、或 Lenis 换实现），页面也不会被带走。
-       注意：只挂 prevent-wheel，不挂 prevent —— 后者会把触屏滑动也一起废掉。 */
-    stage.setAttribute('data-lenis-prevent-wheel', '')
+
+    /* ── 横向滚动的「接管闸门」（2026-10-03 新增）────────────────────
+       ⚠️⚠️ 站长反馈："滚轮滚到『系列专题』时，页面滚动会被拦截掉。"
+       根因：原先 `data-lenis-prevent-wheel` 在 **bind 时就常驻**在 stage 上。
+       Lenis 收 wheel 时沿事件路径找这个属性，找到就整次忽略（见
+       vendor/lenis.mjs onVirtualScroll），于是**只要指针落在词带区域，
+       纵向滚动也被吞掉**，页面纹丝不动。
+
+       站长的意图（明确指定）：**横向滚动只应在"鼠标主动移过去并停留"
+       时发生**。也就是要区分"用户真想横向看词带" vs "用户想纵向滚页面"。
+
+       修法：用 **pointermove 作为闸门**（而不是常驻）：
+         · 指针**真正移动进**词带（pointermove 触发）→ 挂
+           `data-lenis-prevent-wheel`，此时词带接管滚轮；
+         · 指针**离开**词带（pointerleave）→ 立刻摘掉属性，页面恢复滚动；
+         · 页面滚动把词带"滑到"静止光标下时，**不会**触发 pointermove
+           （只有元素自身滑过光标，pointermove 不发生；pointerenter 会发生
+            但我们不监听它），所以这种"被路过"的情况**不会**误接管。
+
+       ⇒ 效果：鼠标停在词带上滚滚轮 = 横向翻卡；鼠标移开（或词带只是被
+         页面滚动带过光标）= 纵向正常滚页面。两者不再打架。
+
+       ⚠️ 关于普通鼠标滚轮：它只有 deltaY、没有 deltaX。为满足站长
+       "悬停即可横滚"的要求，下面 wheel 回调里仍把纵向 deltaY 当作横滚
+       意图（rdx 取横竖较大者）—— 但**仅在悬停（闸门开）时**才这样做。
+       闸门关着时纵向滚轮一律放行给页面。 */
+    const setHoverGate = (on_) => {
+      if (on_) stage.setAttribute('data-lenis-prevent-wheel', '')
+      else stage.removeAttribute('data-lenis-prevent-wheel')
+    }
+    /* 闸门默认关（不挂属性）—— 页面滚动路过时不接管。 */
+    setHoverGate(false)
 
     const ac = new AbortController()
     const on = (el, ev, fn, o) =>
@@ -3017,6 +3205,7 @@ function setupSeriesStrip() {
           表现为「滚轮完全滚不动」。已整段删除，见下方状态声明处的注释。 */
     let wallDir = 0        // 已拉过的方向：-1 头 / 1 尾 / 0 没拉过
     let wallPushes = 0     // 同一方向连续推了几次（用于"逃逸"，见滚轮回调）
+    let releaseOnce = false // 逃逸后仅放行**这一次** wheel（见下方 atEnd 分支）
     const ESCAPE_N = 4     // 连推这么多次还没离开端点 → 放行给页面（别把人困住）
     on(stage, 'wheel', (e) => {
       /* 归一化 deltaMode：Firefox 用「行」(1)，部分环境用「页」(2)，Chrome 是像素(0)。
@@ -3024,6 +3213,18 @@ function setupSeriesStrip() {
       const mult = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? (stage.clientWidth || 800) : 1
       const rx = e.deltaX * mult
       const ry = e.deltaY * mult
+
+      /* 逃逸放行：仅这一次不接管，把滚轮交回 Lenis/页面（闸门不变）。
+         消费后立刻复位，下一次 wheel 恢复正常的横滚处理。 */
+      if (releaseOnce) { releaseOnce = false; return }
+
+      /* ── 接管闸门（2026-10-03，站长："横向滚动只在鼠标主动移过去、
+            停留在那里时才发生"）────────────────────────────────
+         指针**没有**悬停在词带上（data-lenis-prevent-wheel 未挂）时，
+         这次滚轮不该由词带处理 → 直接放行，纵向滚页面、横向交 Lenis。
+         只有指针真正停在词带上（闸门开），下面的横滚逻辑才接管。 */
+      if (!stage.hasAttribute('data-lenis-prevent-wheel')) return
+
       const rdx = Math.abs(rx) > Math.abs(ry) ? rx : ry // 横竖谁大听谁的
 
       /* ⚠️ 容差取 0.02 卡位（≈4.6px），不是 0.001：
@@ -3051,11 +3252,15 @@ function setupSeriesStrip() {
         if (dir === wallDir) {
           wallPushes++
           if (wallPushes >= ESCAPE_N) {
-            /* 逃逸：摘掉 Lenis 的"别管我"标记，交还页面顺滑滚动。
-               ⚠️ 必须摘属性而不是只 return：带着它 Lenis 会无视这次 wheel。 */
-            if (stage.hasAttribute('data-lenis-prevent-wheel')) {
-              stage.removeAttribute('data-lenis-prevent-wheel')
-            }
+            /* 逃逸：这一次 wheel **交还给页面**（让 Lenis 照常滚）。
+               ⚠️⚠️ 2026-10-03 改：旧写法是"摘掉 data-lenis-prevent-wheel 属性"，
+               但那会和新的**悬停闸门**打架 —— 闸门是"没属性就放行"，一旦这里
+               把属性摘了，指针还在词带上，接下来每次 wheel 都会在开头的
+               `if (!hasAttribute) return` 处直接返回，横滚与橡皮筋**全部失效**，
+               表现是"推到头之后词带就卡死、再也动不了"。
+               所以改成：只对**本次**放行（releaseOnce），**不动悬停闸门**。
+               这一次 e.preventDefault 都不调，Lenis 正常接管滚页面。 */
+            releaseOnce = true
             return
           }
         } else {
@@ -3065,7 +3270,9 @@ function setupSeriesStrip() {
         /* 消费 + 橡皮筋推进 */
         e.preventDefault()
         e.stopPropagation()
-        stage.setAttribute('data-lenis-prevent-wheel', '')
+        /* ⚠️ 2026-10-03：这里不再 setAttribute('data-lenis-prevent-wheel')。
+           属性改由「悬停闸门」独占管理（见 bind 里的 setHoverGate）——
+           手动重挂会破坏"未悬停就不接管"的语义。 */
         const out = rdx * STRIP.KICK * 2.2
         vel = clamp(vel + rubber(out, -dir), -STRIP.MAX_VEL, STRIP.MAX_VEL)
         kick(5)
@@ -3080,7 +3287,7 @@ function setupSeriesStrip() {
          Lenis 在 window 上收 wheel，只 preventDefault 它照常把页面滑走。 */
       e.preventDefault()
       e.stopPropagation()
-      stage.setAttribute('data-lenis-prevent-wheel', '') // 见上方：放行时摘过，这里挂回去
+      /* 同样不再 setAttribute —— 属性归悬停闸门管。 */
 
       residue += rdx
       /* 位移累积制：触控板那种 0.5px 的碎 delta 也**一律消费**（不漏给页面），
@@ -3092,6 +3299,27 @@ function setupSeriesStrip() {
       vel = clamp(vel + add, -STRIP.MAX_VEL, STRIP.MAX_VEL)
       kick(4) // 保底 4 帧（见 tick 的坑注释）
     }, { passive: false })
+
+    /* ── 闸门的开关：pointermove 进场 / pointerleave 离场（2026-10-03）───
+       这是"鼠标主动移过去并停留才横滚"的落地处。
+         · pointermove 在 stage 上触发 → 说明指针**真的动了**并进入词带
+           → 开闸（挂 data-lenis-prevent-wheel），词带接管滚轮；
+         · pointerleave → 关闸（摘属性），页面恢复纵向滚动。
+       为什么用 pointermove 而不是 pointerenter：
+         页面滚动会让词带"滑过"静止的光标，此时浏览器只补发 pointerenter/
+         pointerover，**不会**补发 pointermove。用 pointermove 当闸门，
+         就把"用户主动移入"和"词带被页面带过光标"区分开了 ——
+         后者不该抢走纵向滚动（那正是站长报的"被拦截"）。 */
+    on(stage, 'pointermove', (e) => {
+      /* 触摸/拖动由 pointerdown/pointermove 那套 touch 逻辑管（见下），
+         这里的闸门只服务桌面鼠标的滚轮横滚。 */
+      if (e.pointerType !== 'mouse') return
+      setHoverGate(true)
+    }, { passive: true })
+    on(stage, 'pointerleave', (e) => {
+      if (e.pointerType !== 'mouse') return
+      setHoverGate(false)
+    }, { passive: true })
 
     /* ── 程序化移动：点卡 / 键盘 / 聚焦 共用 ──────────────────
        v14：不能直接改 pos（那样没有惯性，是硬跳）。
@@ -3257,6 +3485,8 @@ export default {
     // ⚠️ 必须在 window 守卫之后：它一上来就查 .fm-mq-row，
     // SSR 阶段没有 document，否则 build 报 "document is not defined"
     setupMarqueeTouch()
+    // 移动端词带自动循环（scrollLeft 驱动，与手滑共用位置模型）—— 2026-10-03
+    const rebindMarqueeAuto = setupMarqueeAuto()
     const rebindSeriesStrip = setupSeriesStrip()
     // Lenis 顺滑滚动（站长 2026-09-19 点名要的效果；vendored 于 lenis@1.3.26，33KB ESM）。
     // - reduced-motion 不启用；触屏默认原生滚动（Lenis 的 syncTouch 默认 false）
@@ -3322,6 +3552,8 @@ export default {
         requestAnimationFrame(() => rebindHero && rebindHero())
         // SPA 切回首页时首页 DOM 重建，横滑带的 dataset.stripBound 随之消失，必须重绑
         requestAnimationFrame(() => rebindSeriesStrip && rebindSeriesStrip())
+        // 同理，移动端词带的自动循环也要对着新 DOM 重新接管（2026-10-03）
+        requestAnimationFrame(() => rebindMarqueeAuto && rebindMarqueeAuto())
       }
     }
     arm()
