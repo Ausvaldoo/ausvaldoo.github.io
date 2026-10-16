@@ -930,6 +930,71 @@ function setupViewTransitions(router) {
   }
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * ⚠️⚠️ 2026-10-16 修复：下面这四个符号（parseColor / RULE_FROM / RULE_TO /
+ *    NAV_LINE_HOLD）是 2026-10-14「清理 .VPHero 死代码」那笔提交（a3586ed）
+ *    误删的。那笔提交连它们的**定义**一起删了，却没删 setupHeroFly 里对它们的
+ *    引用 —— 而 setupHeroFly 是 enhanceApp 的**第一步**调用，于是在页面初始化
+ *    时就抛 `ReferenceError: NAV_LINE_HOLD is not defined`，
+ *    **enhanceApp 后续全部初始化中断**（reveal / 词带 / 系列横带 / ViewTransitions
+ *    / Lenis / onAfterRouteChange 统统没注册）。
+ *    站长观察到的症状就是「点链接有时不跳转」。
+ *
+ *    那笔提交自称验证过 node --check + 两次 build —— 但这恰恰证明
+ *    **构建通过不代表运行时没问题**：node --check 只查语法，
+ *    VitePress build 也不执行这段代码，悬空引用要到浏览器里才炸。
+ *    ⇒ 教训：删「死代码」前必须**全量 grep 每个被删符号的引用**，而不是只看函数名。
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 把 'rgb(r, g, b)' / '#rrggbb' 解析成 [r,g,b]；解析失败返回 null。
+ * 用来把 CSS 变量的实际值喂给颜色插值，避免写死的兜底值在改主题后失真。
+ */
+const parseColor = (s) => {
+  if (!s) return null
+  const t = s.trim()
+  const rgb = t.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i)
+  if (rgb) return [+rgb[1], +rgb[2], +rgb[3]]
+  const hex = t.match(/^#([0-9a-f]{6})$/i)
+  if (hex) {
+    const h = hex[1]
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
+  }
+  return null
+}
+
+/* 刊头那条 1px 黑线「飞进」导航栏底边时的颜色插值端点：
+ *    · 起点：刊头 border 的颜色，实测 rgb(10,10,11) = --vp-c-text-1（纯黑）；
+ *    · 终点：导航栏 border 的颜色，实测 rgb(224,221,213) = --vp-c-divider
+ *      （本项目自定义值 #e0ddd5，**不是** VitePress 默认的 #e2e2e3）。
+ * 下面在运行时优先从变量里读，读不到才退回这两个兜底值。
+ * （解析成 [r,g,b] 数组是为了做逐通道插值，见 update() 里的 mix()。）
+ * ⚠️ 用 let 而非 const：运行时会按当前主题（亮/暗）重新赋值。 */
+let RULE_FROM = [10, 10, 11]
+let RULE_TO = [224, 221, 213]
+
+/* 挂在 <html> 上的类：**替身（刊头线）存在期间，把导航栏那条真线压掉**。
+ *
+ * ⚠️⚠️ 为什么必须有这个类 —— 这是实测抓到的**最难看的一个 bug**：
+ *    导航栏的分隔线由 `.VPNav.is-scrolled .VPNavBar` 控制，
+ *    `is-scrolled` 的触发条件是 **window.scrollY > 8**（几乎是刚开始滚）。
+ *    而线替身此刻还在刊头位置（实测 y=9 时替身在 127px，导航线在 64px），
+ *    于是 y∈(9, 69) 这一段里**同屏两条线**：一条近黑的在 127px 往上飘、
+ *    一条浅灰的钉在 64px。垂直差最多 63px、色差 195 —— 一眼就是两根线，
+ *    比不做这个改动还难看。
+ *    （只靠「位置重合后自然重叠」是不够的：`is-scrolled` 亮得太早，
+ *      替身至少还要滚 60px 才追上导航底，这 60px 里就是实打实的双线。）
+ *
+ * 所以：**替身存在期间，把导航栏那条线压掉**；替身一撤，类一移除，
+ * 它自然回来。交接点选在替身淡出窗口（t=0.88）之前 —— 那时替身已经
+ * 与导航底同位、同色，导航线此时接管，视觉上严丝合缝。
+ *
+ * 实现上不用 inline style（那是给 .VPNavBar 这个 VitePress 自己的节点写样式，
+ * 会与它的响应式逻辑打架），改为在 <html> 上挂一个类，由 custom.css 写规则
+ * （html.fm-rule-flying .VPNavBar，见 custom.css）。这样样式归属清晰，
+ * 也方便以后在 CSS 里调整。 */
+const NAV_LINE_HOLD = 'fm-rule-flying'
+
 
 function setupHeroFly() {
   if (typeof window === 'undefined') return
