@@ -25,8 +25,13 @@ export default defineConfig({
     // 部署脚本 / 内部说明不对外发布
     'tools/**',
     // 交接文档：给 AI 和未来的自己看，不对外发布
+    // 2026-11-04 补：HANDOFF.md / DECISIONS.md 是记忆 MCP 在 scope 根目录生成的，
+    // 含本机绝对路径与内部决策过程。.gitignore 已挡提交（第一道门），这里补挡构建（第二道门）——
+    // srcDir 是 '.'，只挡提交而漏了这条，万一被 force-add 就会被构建成网页发到公网。
     'AGENTS.md',
     'CLAUDE.md',
+    'HANDOFF.md',
+    'DECISIONS.md',
     // 项目记忆目录：已在 .gitignore 里挡住提交，这里再挡一次构建。
     // 因为 srcDir 是 `.`，任何 .md 都会变成网页 —— 万一被人 force-add 进来，
     // 没有这条就会被构建成页面发到公网。点开头的目录不会被自动排除（`.obsidian/**` 同理）。
