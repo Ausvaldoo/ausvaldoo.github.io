@@ -2,6 +2,10 @@
 
 博客本体在 `posts/`，全是 Markdown 文件。**用什么编辑器都行，推荐 Obsidian。**
 
+> **2026-11-04 更新**：发文命名、frontmatter 必填项、发布后的验证方式，已按博客现在的规则对齐。
+> 旧版建议「用中文文件名」「分类和标签是可选的」——照旧版写，新文章的网址会变成一长串百分号、
+> 首页分类空白、标签页找不到它。**旧写法已废弃，别再用。**
+
 ## 一、首次设置 Obsidian（一次性）
 
 1. 安装 Obsidian（官网 obsidian.md，或 `winget install Obsidian.Obsidian`）
@@ -13,12 +17,33 @@
 
 ## 二、新增文章
 
-1. 文件列表右键 `posts` → 新建笔记，命名 `YYYY-MM-DD-标题.md`（如 `2026-09-08-我的新文章.md`）
-   - 文件名**建议只用中文 + 数字 + 半角连字符**，别用 `：` `？` `“”` `（）` 这类全角/弯引号标点 —— 能建出来，但生成的网址会被转义成一长串百分号，难看也难分享。
-2. `Ctrl+P` → 输入「模板」→ 插入模板「文章模板」，补上 `title` 和 `date`
-3. 正文随便写。写一半不想发？把文件挪进 `posts/drafts/`，那里**不会发布**
+1. 文件列表右键 `posts` → 新建笔记，命名 **`YYYY-MM-DD-english-slug.md`**
 
-**front matter 至少要有 `title` 和 `date`**，可选 `categories`、`tags`、`description`。
+   例：`2026-11-05-why-courts-exist.md`
+
+   - 文件名只准用**小写英文 + 数字 + 半角连字符**，2~5 个词。中文标题写在 frontmatter 的 `title` 里；
+     首页、归档页、浏览器标签显示的都是 `title`，**读者看不到文件名**，换成英文对阅读完全无感。
+   - 为什么：中文文件名生成的网址会被转义成几百个百分号字符，复制到微信/邮件里容易被截断或转义。
+   - ⚠️ **文件名一旦发布就不要改** —— 改了网址就变，别人存过的旧链接会失效。
+   - `date` 的日期要和文件名开头一致（格式 `YYYY-MM-DD 12:00:00`）。
+
+2. `Ctrl+P` → 输入「模板」→ 插入模板「文章模板」，把 frontmatter 补齐。
+
+   **四项必填**：`title`、`date`、`categories`、`tags`；`description` 可选。
+
+   | 字段 | 怎么填 |
+   |---|---|
+   | `title` | 中文标题，一行写完 |
+   | `date` | 发文日期，与文件名前缀一致 |
+   | `categories` | **只能 1 个**，从 `/tags` 页顶部的分类里挑（目前 9 个，以页面为准）。**不要写成数组、不要造新类** |
+   | `tags` | **2~4 个**，从 `/tags` 页词云现有的词里挑（目前 23 个，以页面为准）。**不要即兴造新词** —— 新词只会带出这一篇文章，等于没有入口 |
+   | `description` | 可选，一到两句话。首页卡片是「正文优先」：正文比描述长时显示正文开头 |
+
+   - 分类是「这篇文章属于哪」，标签是「从哪些角度能找到它」，两者职责不同。
+   - **同一个系列的文章必须归到同一个分类**；要把文章加进系列，先定好整个系列的归属再填 `series` / `seriesOrder`，别一篇一篇地想。
+
+3. 正文第一行写 `# 中文标题`（frontmatter 的 `title` **不会**自动变成页面大标题）。
+4. 写一半不想发？把文件挪进 `posts/drafts/`，那里**不会发布**。
 
 ## 三、编辑 / 删除
 
@@ -28,15 +53,43 @@
 
 ## 四、发布（Obsidian 只管写，发布靠 git）
 
-在 PowerShell 里（`E:\Git_Repos\blog-vitepress` 目录下）：
+最省事：双击桌面的 `PublishBlog.bat`，输入一句说明，回车。
+
+等价命令（在 `E:\Git_Repos\blog-vitepress` 目录下）：
 
 ```powershell
 git add -A
 git commit -m "新文章：标题"
-git push
+git push origin main
 ```
 
-推完约 1 分半自动上线 https://ausvaldoo.github.io 。本地想先看效果：`npm run build` 后重启 `npx vitepress preview`（preview 必须重启才会看到新构建）。
+- **每次改动单独提交**，说明写清楚改了什么；`git log` 就是变更档案。
+  改错了用 `git revert <提交号>` 撤销，再按下面流程重新发布。
+- 推完由 GitHub Actions 自动构建发布，**约 1~2 分钟**上线 https://ausvaldoo.github.io 。
+
+### ⚠️ 推完不算完，必须验证线上
+
+**别信「推送成功」，也别信 CI 绿灯** —— 绿灯只说明构建产物生成了，不代表线上内容已经换掉。
+等 1~2 分钟后自己探一次（网址换成你这篇的）：
+
+```powershell
+curl.exe -s -o NUL -w "%{http_code}" https://ausvaldoo.github.io/posts/2026-11-05-why-courts-exist
+```
+
+期望 `200`。更可靠的证据是**抓回页面、搜新标题**：
+
+```powershell
+curl.exe -s https://ausvaldoo.github.io/posts/2026-11-05-why-courts-exist | findstr /C:"新文章标题"
+```
+
+搜得到，才算真上线。
+
+- 刚部署完短暂 404，是 CDN 把 404 缓存了，等几分钟或在网址后加 `?v=2`，不是文章没发出去。
+- 刷新后看着没变：先按 **Ctrl+F5** 强刷；再看 `git status -sb` 有没有 `ahead N`
+  —— **绝大多数情况是提交了但没 push**。
+- PowerShell 里 `curl` 是别的命令的别名，**必须写 `curl.exe`**。
+
+本地想先看效果：`npm run build` 后**必须重启** `npx vitepress preview`，否则看到的是旧页面。
 
 ## 五、语法注意（Obsidian ≠ 网页）
 
@@ -47,4 +100,17 @@ git push
 | `> [!note]` 标注块 | ❌ 不渲染 | `::: tip 标题 ... ::: ` |
 | `==高亮==` | ❌ 原样显示 | `**加粗**` |
 
-图片放 `public/img/`，正文用 `![](/img/文件名.png)` 引用。
+图片放 `public/images/`，正文用 `![](/images/文件名.png)` 引用
+（目前文章都是纯文字，这个目录还是空的）。
+
+## 六、交给 AI 部署时
+
+把新 `.md` 放进 `posts/`，说一声「发新文章」即可。对方应当：
+
+1. **先检查**：文件名、frontmatter 四项、分类唯一、标签在受控词表内、站内链接、图片引用。
+   发现问题**先提醒，不擅自改你的正文、也不擅自重命名文件**。
+2. **单独一笔提交**并 `git push origin main`。
+3. **等 1~2 分钟验证三件事**：文章页返回 200 / `sitemap.xml` 里出现新网址 / 抓回的 HTML 里能搜到新标题。
+4. 交代清楚：改了哪一层、你怎么自己验证、改坏了怎么回退。
+
+上面四步就是全部流程，不依赖某一家 AI，换谁接手照着做都行。
